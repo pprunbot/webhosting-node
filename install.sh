@@ -1,105 +1,79 @@
-#!/usr/bin/env bash
+#!/bin/bash
+
 set -e
 
-# —— 0. 参数/环境变量读取 —— 
-# 优先：ENV DOMAIN > 第1个脚本参数 > 交互式输入
-if [ -n "$1" ]; then
-  DOMAIN="$1"
-elif [ -n "$DOMAIN" ]; then
-  DOMAIN="$DOMAIN"
-else
-  # 只有在 STDIN 是 TTY 时才交互
-  if [ -t 0 ]; then
-    read -p "请输入项目域名（例如 dataonline.x86.dpdns.org）: " DOMAIN
-  fi
+# 检查 Node.js 和 npm
+echo "检测 Node.js 和 npm..."
+if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+  echo "未检测到 Node.js，开始安装..."
+  mkdir -p ~/.local/node
+  curl -fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
+  tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
+  echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
+  echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
+  source ~/.bashrc || true
+  source ~/.bash_profile || true
 fi
 
-if [ -z "$DOMAIN" ]; then
-  echo "错误：未提供域名！"
-  echo "用法示例："
-  echo "  1) 交互式："
-  echo "       curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/install.sh | bash"
-  echo "  2) 管道 + 环境变量："
-  echo "       DOMAIN=host.1212.cloudns.be bash <(curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/install.sh)"
-  echo "  3) 管道 + 参数："
-  echo "       curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/install.sh | bash -s my.domain.com"
+# 再次确认是否安装成功
+if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+  echo "Node.js 安装失败，退出脚本。"
   exit 1
 fi
 
-# —— 1. 检测并安装 Node.js v20.12.2 ——
-if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
-  echo "检测不到 node/npm，安装 Node.js v20.12.2 到 ~/.local/node ..."
-  mkdir -p ~/.local/node
-  curl -fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o /tmp/node.tar.gz
-  tar -xzf /tmp/node.tar.gz --strip-components=1 -C ~/.local/node
-  rm /tmp/node.tar.gz
+echo "Node.js 版本: $(node -v)"
+echo "npm 版本: $(npm -v)"
 
-  # 写入 PATH（去重）并立即生效
-  grep -q 'export PATH=\$HOME/.local/node/bin' ~/.bashrc 2>/dev/null || \
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
-  grep -q 'export PATH=\$HOME/.local/node/bin' ~/.bash_profile 2>/dev/null || \
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
-  export PATH="$HOME/.local/node/bin:$PATH"
-
-  # 再次检测
-  if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
-    echo "Node.js 安装失败，退出。"
-    exit 1
-  fi
+# 交互获取域名
+read -p "请输入你的域名（例如 dataonline.x86.dpdns.org）: " DOMAIN
+if [[ -z "$DOMAIN" ]]; then
+  echo "域名不能为空"
+  exit 1
 fi
-echo "检测通过：node $(node -v)，npm $(npm -v)"
 
-# —— 2. 创建目标目录 —— 
-TARGET_DIR="$HOME/domains/$DOMAIN/public_html"
-echo "创建目录 $TARGET_DIR ..."
-mkdir -p "$TARGET_DIR"
-
-# —— 3. 下载四个文件 —— 
-echo "下载代码文件到 $TARGET_DIR ..."
-BASE_RAW="https://raw.githubusercontent.com/pprunbot/webhosting-node/main"
-for file in app.js .htaccess package.json ws.php; do
-  curl -fsSL "$BASE_RAW/$file" -o "$TARGET_DIR/$file"
-done
-
-# —— 4. 安装 pm2 —— 
-echo "安装 pm2 ..."
-npm install -g pm2
-
-# —— 5. 读取端口 & UUID —— 
-# 管道时也支持 ENV PORT / ENV UUID
-PORT=${PORT:-}
-UUID=${UUID:-}
-if [ -z "$PORT" ] && [ -t 0 ]; then
-  read -p "请输入监听端口 [默认 4642]: " PORT
-fi
+# 交互获取监听端口
+read -p "请输入监听端口（默认 4642）: " PORT
 PORT=${PORT:-4642}
 
-if [ -z "$UUID" ] && [ -t 0 ]; then
-  read -p "请输入 UUID [默认 cdc72a29-c14b-4741-bd95-e2e3a8f31a56]: " UUID
-fi
+# 交互获取 UUID
+read -p "请输入 UUID（默认: cdc72a29-c14b-4741-bd95-e2e3a8f31a56）: " UUID
 UUID=${UUID:-cdc72a29-c14b-4741-bd95-e2e3a8f31a56}
 
-# —— 6. 全局替换默认端口/UUID —— 
-echo "替换默认端口 4642 → $PORT，替换默认 UUID → $UUID ..."
-sed -i "s/4642/$PORT/g" \
-    "$TARGET_DIR/app.js" \
-    "$TARGET_DIR/.htaccess" \
-    "$TARGET_DIR/ws.php"
-sed -i "s/cdc72a29-c14b-4741-bd95-e2e3a8f31a56/$UUID/g" \
-    "$TARGET_DIR/app.js"
+# 获取 SSH 用户名
+USERNAME=$(whoami)
+APP_DIR=~/domains/${DOMAIN}/public_html
 
-# —— 7. 启动 & 保存 pm2 —— 
-cd "$TARGET_DIR"
+# 创建路径
+mkdir -p "$APP_DIR"
+cd "$APP_DIR"
+
+# 下载四个文件
+echo "正在下载 app.js, .htaccess, ws.php, package.json..."
+curl -O https://raw.githubusercontent.com/pprunbot/webhosting-node/main/app.js
+curl -O https://raw.githubusercontent.com/pprunbot/webhosting-node/main/.htaccess
+curl -O https://raw.githubusercontent.com/pprunbot/webhosting-node/main/ws.php
+curl -O https://raw.githubusercontent.com/pprunbot/webhosting-node/main/package.json
+
+# 替换端口与 UUID
+echo "正在配置 app.js..."
+
+sed -i "s/process.env.PORT || [0-9]\+/process.env.PORT || $PORT/" app.js
+sed -i "s|process.env.UUID || '.*'|process.env.UUID || '$UUID'|" app.js
+sed -i "s|process.env.DOMAIN || '.*'|process.env.DOMAIN || '$DOMAIN'|" app.js
+
+# 安装 PM2
+echo "正在安装 PM2..."
+npm install -g pm2
+
+# 启动应用
+echo "启动 PM2 应用..."
 pm2 start app.js --name my-app
 pm2 save
 
-# —— 8. 配置开机自启 —— 
-SSH_USER=$(whoami)
-CRON_CMD="@reboot sleep 30 && $HOME/.local/node/bin/pm2 resurrect --no-daemon"
-if ! crontab -l 2>/dev/null | grep -Fq "$CRON_CMD"; then
-  ( crontab -l 2>/dev/null; echo "$CRON_CMD" ) | crontab -
-fi
+# 设置 pm2 自动重启
+echo "配置 Crontab..."
+CRON_CMD="@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon"
+(crontab -l 2>/dev/null | grep -v -F "$CRON_CMD" || true; echo "$CRON_CMD") | crontab -
 
-echo ""
 echo "✅ 安装完成！"
-echo "访问：http://$DOMAIN/ 验证服务是否正常"
+echo "PM2 应用已启动，监听端口：$PORT"
