@@ -1,275 +1,175 @@
 #!/bin/bash
-
-# 退出脚本执行错误
 set -e
 
 # 颜色定义
-RED='\033[31m'
-GREEN='\033[32m'
-YELLOW='\033[33m'
-BLUE='\033[34m'
-MAGENTA='\033[35m'
-CYAN='\033[36m'
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[1;34m'
+CYAN='\033[1;36m'
+NC='\033[0m'
 BOLD='\033[1m'
-RESET='\033[0m'
 
-# 项目信息
-PROJECT_URL="https://github.com/pprunbot/webhosting-node"
+# 图形元素
+HR="${BLUE}===================================================${NC}"
+CHECK="${GREEN}✔${NC}"
+CROSS="${RED}✘${NC}"
+ARROW="${CYAN}➜${NC}"
 
-# 绘制分隔线
-draw_line() {
-  printf "%$(tput cols)s\n" | tr ' ' '─'
-}
-
-# 显示项目信息
-show_header() {
+# 显示标题
+print_title() {
   clear
-  echo -e "${GREEN}${BOLD}"
-  draw_line
-  printf "%*s\n" $(( (${#1} + $(tput cols)) / 2 )) "$1"
-  draw_line
-  echo -e "${RESET}"
-  echo -e "${CYAN}项目地址: ${YELLOW}${PROJECT_URL}${RESET}\n"
+  echo -e "${HR}"
+  echo -e "${BLUE} ██████╗ ██████╗ ███████╗██╗   ██╗${YELLOW}██╗  ██╗${NC}"
+  echo -e "${BLUE}██╔═══██╗██╔══██╗██╔════╝██║   ██║${YELLOW}╚██╗██╔╝${NC}"
+  echo -e "${BLUE}██║   ██║██████╔╝█████╗  ██║   ██║${YELLOW} ╚███╔╝ ${NC}"
+  echo -e "${BLUE}██║   ██║██╔═══╝ ██╔══╝  ██║   ██║${YELLOW} ██╔██╗ ${NC}"
+  echo -e "${BLUE}╚██████╔╝██║     ██║     ╚██████╔╝${YELLOW}██╔╝ ██╗${NC}"
+  echo -e "${BLUE} ╚═════╝ ╚═╝     ╚═╝      ╚═════╝ ${YELLOW}╚═╝  ╚═╝${NC}"
+  echo -e "${HR}"
 }
 
-# 获取当前用户名
+# 进度显示
+progress() {
+  echo -ne "${CYAN}${1}...${NC}"
+  shift
+  ("$@") >/dev/null 2>&1
+  echo -e "\r${CHECK} ${CYAN}${1}完成${NC}"
+}
+
+# 错误处理
+error_exit() {
+  echo -e "\n${RED}╔══════════════════════════════════════════╗"
+  echo -e "║              安装遇到错误              ║"
+  echo -e "╠══════════════════════════════════════════╣"
+  echo -e "║ ${BOLD}原因: ${1}${RED}                     ║"
+  echo -e "╚══════════════════════════════════════════╝${NC}\n"
+  exit 1
+}
+
+# 初始化检测
+print_title
+echo -e "${CHECK} ${CYAN}开始系统检测...${NC}"
+
+# 获取用户名
 USERNAME=$(whoami)
+echo -e "${ARROW} ${BOLD}当前用户: ${GREEN}${USERNAME}${NC}"
 
-# 初始界面
-show_header "WebHosting Node 管理工具"
+# 域名检测
+DOMAINS_DIR="/home/${USERNAME}/domains"
+[ ! -d "${DOMAINS_DIR}" ] && error_exit "域名目录不存在"
 
-# 主菜单
-main_menu() {
-  echo -e "${BOLD}${MAGENTA}主菜单：${RESET}"
-  echo -e "  ${GREEN}1)${RESET} 新建项目部署"
-  echo -e "  ${GREEN}2)${RESET} 卸载现有项目"
-  echo -e "  ${GREEN}3)${RESET} 退出系统"
-  draw_line
-  read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-3]: ${RESET}")" MAIN_CHOICE
+DOMAINS=($(ls -d ${DOMAINS_DIR}/*/ | xargs -n1 basename))
+[ ${#DOMAINS[@]} -eq 0 ] && error_exit "未找到可用域名"
 
-  case $MAIN_CHOICE in
-    1) install_menu ;;
-    2) uninstall_menu ;;
-    3) exit 0 ;;
-    *) 
-      echo -e "${RED}无效选项，请重新选择${RESET}"
-      sleep 1
-      main_menu
-      ;;
-  esac
-}
+# 域名选择
+echo -e "\n${CHECK} ${CYAN}检测到可用域名:${NC}"
+for i in "${!DOMAINS[@]}"; do
+  echo -e " ${BOLD}${GREEN}$((i+1)).${NC} ${DOMAINS[$i]}"
+done
 
-# 安装菜单
-install_menu() {
-  show_header "新建项目部署"
-  
-  # 检测域名目录
-  DOMAINS_DIR="/home/$USERNAME/domains"
-  if [ ! -d "$DOMAINS_DIR" ]; then
-    echo -e "${RED}错误：未找到域名目录 ${DOMAINS_DIR}${RESET}"
-    exit 1
-  fi
+read -p "$(echo -e "${ARROW} ${BOLD}请选择域名 [${GREEN}1-${#DOMAINS[@]}${NC}]: ")" DOMAIN_INDEX
+DOMAIN_INDEX=${DOMAIN_INDEX:-1}
+[[ ! $DOMAIN_INDEX =~ ^[0-9]+$ ]] && error_exit "无效数字输入"
+DOMAIN=${DOMAINS[$((DOMAIN_INDEX-1))]}
+echo -e "${CHECK} 已选域名: ${GREEN}${DOMAIN}${NC}"
 
-  # 获取可用域名列表
-  DOMAINS=($(ls -d $DOMAINS_DIR/*/ | xargs -n1 basename))
-  if [ ${#DOMAINS[@]} -eq 0 ]; then
-    echo -e "${RED}错误：未找到任何域名配置${RESET}"
-    exit 1
-  fi
-
-  # 显示域名选择菜单
-  echo -e "${BOLD}${BLUE}可用域名列表：${RESET}"
-  for i in "${!DOMAINS[@]}"; do
-    printf "${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${DOMAINS[$i]}"
-  done
-
-  # 获取用户选择的域名
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请选择域名（输入数字）[默认1]: ${RESET}")" DOMAIN_INDEX
-  DOMAIN_INDEX=${DOMAIN_INDEX:-1}
-  if [[ ! $DOMAIN_INDEX =~ ^[0-9]+$ ]] || [ $DOMAIN_INDEX -lt 1 ] || [ $DOMAIN_INDEX -gt ${#DOMAINS[@]} ]; then
-    echo -e "${RED}无效的选择${RESET}"
-    exit 1
-  fi
-
-  DOMAIN=${DOMAINS[$((DOMAIN_INDEX-1))]}
-  echo -e "\n${GREEN}✓ 已选择域名: ${YELLOW}${DOMAIN}${RESET}"
-
-  # 自定义端口输入
-  draw_line
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请输入端口号 [默认4000]: ${RESET}")" PORT
+# 端口输入
+while true; do
+  read -p "$(echo -e "${ARROW} ${BOLD}请输入服务端口 [${GREEN}4000${NC}]: ")" PORT
   PORT=${PORT:-4000}
+  [[ $PORT =~ ^[0-9]+$ && $PORT -gt 0 && $PORT -lt 65536 ]] && break
+  echo -e "${CROSS} 端口必须为1-65535之间的数字"
+done
 
-  # 验证端口号
-  if [[ ! $PORT =~ ^[0-9]+$ ]] || [ $PORT -lt 1 ] || [ $PORT -gt 65535 ]; then
-    echo -e "${RED}无效的端口号${RESET}"
-    exit 1
-  fi
+# UUID生成
+read -p "$(echo -e "${ARROW} ${BOLD}输入UUID [按Enter自动生成]: ")" UUID
+if [ -z "${UUID}" ]; then
+  UUID=$(cat /proc/sys/kernel/random/uuid)
+  echo -e "${CHECK} 生成UUID: ${GREEN}${UUID}${NC}"
+else
+  echo -e "${CHECK} 使用自定义UUID"
+fi
 
-  # UUID输入
-  draw_line
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请输入UUID [默认随机生成]: ${RESET}")" UUID
-  if [ -z "$UUID" ]; then
-    UUID=$(cat /proc/sys/kernel/random/uuid)
-    echo -e "${GREEN}✓ 已生成随机UUID: ${YELLOW}${UUID}${RESET}"
-  fi
-
-  # 开始部署流程
-  start_installation
-}
-
-# 卸载菜单
-uninstall_menu() {
-  show_header "项目卸载中心"
+# Node.js安装检测
+install_node() {
+  echo -e "\n${HR}"
+  echo -e "${CHECK} ${CYAN}开始Node.js环境部署${NC}"
   
-  # 获取已部署项目
-  DOMAINS_DIR="/home/$USERNAME/domains"
-  INSTALLED=()
-  for domain in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
-    if [ -d "$DOMAINS_DIR/$domain/public_html" ]; then
-      INSTALLED+=("$domain")
-    fi
-  done
-
-  if [ ${#INSTALLED[@]} -eq 0 ]; then
-    echo -e "${YELLOW}没有找到可卸载的项目${RESET}"
-    sleep 2
-    main_menu
-    return
-  fi
-
-  echo -e "${BOLD}${RED}⚠ 警告：这将永久删除项目数据！${RESET}\n"
-  echo -e "${BOLD}${BLUE}已部署项目列表：${RESET}"
-  for i in "${!INSTALLED[@]}"; do
-    printf "${RED}%2d)${RESET} %s\n" "$((i+1))" "${INSTALLED[$i]}"
-  done
-
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请选择要卸载的项目 [1-${#INSTALLED[@]}]: ${RESET}")" UNINSTALL_INDEX
-  if [[ ! $UNINSTALL_INDEX =~ ^[0-9]+$ ]] || [ $UNINSTALL_INDEX -lt 1 ] || [ $UNINSTALL_INDEX -gt ${#INSTALLED[@]} ]; then
-    echo -e "${RED}无效的选择${RESET}"
-    exit 1
-  fi
-
-  SELECTED_DOMAIN=${INSTALLED[$((UNINSTALL_INDEX-1))]}
+  mkdir -p ~/.local/node || error_exit "创建目录失败"
   
-  # 确认操作
-  read -p "$(echo -e "${BOLD}${RED}确认要卸载 ${SELECTED_DOMAIN} 吗？[y/N]: ${RESET}")" CONFIRM
-  if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}已取消卸载操作${RESET}"
-    exit 0
-  fi
+  progress "下载Node.js" curl -fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
+  progress "解压文件" tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
+  rm node.tar.gz
 
-  # 执行卸载
-  echo -e "\n${BLUE}正在停止PM2服务...${RESET}"
-  pm2 stop "my-app-${SELECTED_DOMAIN}" || true
-  pm2 delete "my-app-${SELECTED_DOMAIN}" || true
-  pm2 save
+  echo -e "export PATH=\$HOME/.local/node/bin:\$PATH" >> ~/.bashrc
+  echo -e "export PATH=\$HOME/.local/node/bin:\$PATH" >> ~/.bash_profile
+  source ~/.bashrc
+  source ~/.bash_profile
 
-  echo -e "${BLUE}正在清理项目文件...${RESET}"
-  rm -rf "${DOMAINS_DIR}/${SELECTED_DOMAIN}/public_html"
-
-  echo -e "\n${GREEN}✓ ${SELECTED_DOMAIN} 已成功卸载${RESET}"
-  sleep 2
-  main_menu
+  echo -e "\n${CHECK} ${GREEN}Node.js版本: ${BOLD}$(node -v)${NC}"
+  echo -e "${CHECK} ${GREEN}npm版本: ${BOLD}$(npm -v)${NC}"
 }
 
-# 检测Node.js安装
-check_node() {
-  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "\n${BLUE}正在安装Node.js...${RESET}"
-    
-    # 创建安装目录
-    mkdir -p ~/.local/node
-    
-    # 下载Node.js
-    echo -e "${CYAN}▶ 下载Node.js运行环境...${RESET}"
-    curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
-    
-    # 解压文件
-    echo -e "\n${CYAN}▶ 解压文件...${RESET}"
-    tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
-    
-    # 添加环境变量
-    echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
-    
-    # 立即生效
-    source ~/.bashrc
-    source ~/.bash_profile
-    
-    # 清理临时文件
-    rm node.tar.gz
-  fi
+if ! command -v node &>/dev/null; then
+  install_node
+else
+  echo -e "\n${CHECK} ${GREEN}已安装Node.js ${BOLD}$(node -v)${NC}"
+fi
 
-  # 再次验证安装
-  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
-    exit 1
-  fi
-}
+# 安装PM2
+echo -e "\n${HR}"
+progress "安装PM2守护进程" npm install -g pm2
+echo -e "${CHECK} ${GREEN}PM2版本: ${BOLD}$(pm2 -v)${NC}"
 
-# 安装流程
-start_installation() {
-  check_node
+# 项目部署
+echo -e "\n${HR}"
+echo -e "${CHECK} ${CYAN}开始部署项目文件${NC}"
+PROJECT_DIR="/home/${USERNAME}/domains/${DOMAIN}/public_html"
+mkdir -p "${PROJECT_DIR}"
+cd "${PROJECT_DIR}" || error_exit "进入项目目录失败"
 
-  # 安装PM2
-  echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
-  npm install -g pm2
+FILES=("app.js" ".htaccess" "package.json" "ws.php")
+for file in "${FILES[@]}"; do
+  progress "下载${file}" curl -fsSL "https://raw.githubusercontent.com/pprunbot/webhosting-node/main/${file}" -O
+done
 
-  # 创建项目目录
-  PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
-  mkdir -p $PROJECT_DIR
-  cd $PROJECT_DIR
+# 配置文件修改
+echo -e "\n${CHECK} ${CYAN}配置应用参数${NC}"
+sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '${DOMAIN}';/" app.js
+sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '${UUID}';/" app.js
+sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || ${PORT};/" app.js
 
-  # 下载项目文件
-  echo -e "\n${BLUE}正在下载项目文件...${RESET}"
-  FILES=("app.js" ".htaccess" "package.json" "ws.php")
-  for file in "${FILES[@]}"; do
-    echo -e "${CYAN}▶ 下载 $file...${RESET}"
-    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
-  done
+# 安装依赖
+echo -e "\n${HR}"
+progress "安装项目依赖" npm install
 
-  # 项目依赖安装
-  echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
-  npm install
+# 启动服务
+echo -e "\n${HR}"
+echo -e "${CHECK} ${CYAN}启动应用服务${NC}"
+pm2 start app.js --name my-app
+pm2 save
 
-  # 新增依赖安装验证
-  if [ $? -ne 0 ]; then
-    echo -e "${RED}错误：npm依赖安装失败，请检查网络连接和package.json配置${RESET}"
-    exit 1
-  fi
+# 定时任务
+CRON_JOB="@reboot sleep 30 && /home/${USERNAME}/.local/node/bin/pm2 resurrect --no-daemon"
+if ! crontab -l | grep -qF "${CRON_JOB}"; then
+  (crontab -l 2>/dev/null; echo "${CRON_JOB}") | crontab -
+  echo -e "${CHECK} 已添加开机启动任务"
+else
+  echo -e "${CHECK} 开机启动任务已存在"
+fi
 
-  # 修改配置文件
-  echo -e "\n${BLUE}正在配置应用参数...${RESET}"
-  sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
-  sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
-  sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
-  sed -i "s/\$PORT/$PORT/g" .htaccess
-  sed -i "s/\$PORT/$PORT/g" ws.php
-
-  # 启动服务
-  echo -e "\n${BLUE}正在启动PM2服务...${RESET}"
-  pm2 start app.js --name "my-app-${DOMAIN}"
-  pm2 save
-
-  # 添加定时任务
-  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
-
-  # 最终输出
-  draw_line
-  echo -e "${GREEN}${BOLD}部署成功！${RESET}"
-  echo -e "${CYAN}访问地址\t: ${YELLOW}https://${DOMAIN}${RESET}"
-  echo -e "${CYAN}UUID\t\t: ${YELLOW}${UUID}${RESET}"
-  echo -e "${CYAN}端口号\t\t: ${YELLOW}${PORT}${RESET}"
-  echo -e "${CYAN}项目目录\t: ${YELLOW}${PROJECT_DIR}${RESET}"
-  echo -e "${CYAN}GitHub仓库\t: ${YELLOW}${PROJECT_URL}${RESET}"
-  draw_line
-  echo ""
-}
-
-# 启动主菜单
-main_menu
+# 完成界面
+echo -e "\n${HR}"
+echo -e "${GREEN}╔══════════════════════════════════════════╗"
+echo -e "║            🎉 安装成功！               ║"
+echo -e "╠══════════════════════════════════════════╣"
+echo -e "║ ${BOLD}访问地址: ${CYAN}https://${DOMAIN}${GREEN}           ║"
+echo -e "║ ${BOLD}UUID: ${YELLOW}${UUID}${GREEN}     ║"
+echo -e "║ ${BOLD}服务端口: ${BLUE}${PORT}${GREEN}                     ║"
+echo -e "║                                        ║"
+echo -e "║ ${BOLD}管理命令:                          ${GREEN}║"
+echo -e "║ ${ARROW} ${CYAN}pm2 list    ${GREEN}查看服务状态       ║"
+echo -e "║ ${ARROW} ${CYAN}pm2 logs    ${GREEN}查看实时日志       ║"
+echo -e "║ ${ARROW} ${CYAN}pm2 stop my-app   ${GREEN}停止服务     ║"
+echo -e "╚══════════════════════════════════════════╝${NC}\n"
