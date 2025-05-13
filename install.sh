@@ -10,10 +10,11 @@ if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
   rm /tmp/node.tar.gz
 
   # 将 ~/.local/node/bin 加入 PATH（只添加一次）
-  grep -q 'export PATH=\$HOME/.local/node/bin' ~/.bashrc 2>/dev/null || \
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc && source ~/.bashrc
-  grep -q 'export PATH=\$HOME/.local/node/bin' ~/.bash_profile 2>/dev/null || \
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile && source ~/.bash_profile
+  grep -q 'export PATH=\$HOME/.local/node/bin' ~/.bashrc 2>/dev/null || echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
+  grep -q 'export PATH=\$HOME/.local/node/bin' ~/.bash_profile 2>/dev/null || echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
+
+  # 立即生效
+  export PATH="$HOME/.local/node/bin:$PATH"
 
   # 再次检测
   if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
@@ -25,7 +26,13 @@ fi
 echo "检测通过：node $(node -v)，npm $(npm -v)"
 
 # —— 2. 交互：获取域名 —— 
-read -p "请输入项目域名（例如 dataonline.x86.dpdns.org）: " DOMAIN
+# 从 /dev/tty 读取，确保非交互管道也能提示
+read -p "请输入项目域名（例如 dataonline.x86.dpdns.org）: " DOMAIN < /dev/tty
+if [ -z "$DOMAIN" ]; then
+  echo "未提供域名，退出。"
+  exit 1
+fi
+
 TARGET_DIR="$HOME/domains/$DOMAIN/public_html"
 mkdir -p "$TARGET_DIR"
 
@@ -41,26 +48,25 @@ echo "全局安装 pm2 ..."
 npm install -g pm2
 
 # —— 5. 交互：自定义端口 & UUID —— 
-read -p "请输入监听端口 [默认 4642]: " PORT
+read -p "请输入监听端口 [默认 4642]: " PORT < /dev/tty
 PORT=${PORT:-4642}
 
-read -p "请输入 UUID [回车使用默认 cdc72a29-c14b-4741-bd95-e2e3a8f31a56]: " UUID
+read -p "请输入 UUID [回车使用默认 cdc72a29-c14b-4741-bd95-e2e3a8f31a56]: " UUID < /dev/tty
 UUID=${UUID:-cdc72a29-c14b-4741-bd95-e2e3a8f31a56}
 
 # —— 6. 在文件中替换端口 & UUID —— 
-echo "在 app.js 中替换 PORT 和 UUID ..."
-# 替换环境变量默认端口
+echo "在文件中替换 PORT 和 UUID …"
+# app.js: 环境变量默认值 & 硬编码地址
 sed -i "s|\(const port = process.env.PORT || '\)[^']*|\1$PORT|g" "$TARGET_DIR/app.js"
-# 替换硬编码监听地址中的端口
 sed -i "s|127\.0\.0\.1:[0-9]\+|127.0.0.1:$PORT|g" "$TARGET_DIR/app.js"
 
-# 替换 .htaccess 中的端口
+# .htaccess
 sed -i "s|127\.0\.0\.1:[0-9]\+|127.0.0.1:$PORT|g" "$TARGET_DIR/.htaccess"
 
-# 替换 ws.php 中的端口
+# ws.php
 sed -i "s|tcp://127:[0-9]\+|tcp://127:$PORT|g" "$TARGET_DIR/ws.php"
 
-# 替换 UUID
+# UUID
 sed -i "s|\(const UUID = process.env.UUID || '\)[^']*|\1$UUID|g" "$TARGET_DIR/app.js"
 
 # —— 7. 启动应用 —— 
@@ -71,9 +77,7 @@ pm2 save
 # —— 8. 添加开机自启 —— 
 SSH_USER=$(whoami)
 CRON_CMD="@reboot sleep 30 && $HOME/.local/node/bin/pm2 resurrect --no-daemon"
-# 仅在 crontab 中不存在时添加
 ( crontab -l 2>/dev/null | grep -F "$CRON_CMD" ) || \
   ( crontab -l 2>/dev/null; echo "$CRON_CMD" ) | crontab -
 
-echo "安装完成！"
-echo "访问：http://$DOMAIN/ 查看是否正常。"
+echo "安装完成！访问：http://$DOMAIN/ 查看是否正常。"
