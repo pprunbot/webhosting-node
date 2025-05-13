@@ -5,7 +5,7 @@ USER_NAME="$(whoami)"
 HOME_DIR="${HOME:-/home/$USER_NAME}"
 echo "Detected user: $USER_NAME"
 
-# Alternative method to list domains without mapfile
+# Check for domains manually (no use of /dev/fd/62 or xargs)
 DOMAINS=()
 for d in "$HOME_DIR/domains"/*/; do
   if [ -d "$d" ]; then
@@ -25,7 +25,7 @@ else
     printf "%d) %s\n" "$((i+1))" "${DOMAINS[i]}"
   done
   while true; do
-    read -p "#? " CHOICE < /dev/tty
+    read -p "#? " CHOICE
     if [[ "$CHOICE" =~ ^[0-9]+$ ]] && (( CHOICE>=1 && CHOICE<=${#DOMAINS[@]} )); then
       DOMAIN="${DOMAINS[CHOICE-1]}"
       break
@@ -35,9 +35,9 @@ else
   echo "Selected domain: $DOMAIN"
 fi
 
-read -p "Enter port [default 4642]: " PORT < /dev/tty
+read -p "Enter port [default 4642]: " PORT
 PORT="${PORT:-4642}"
-read -p "Enter UUID [default cdc72a29-c14b-4741-bd95-e2e3a8f31a56]: " UUID < /dev/tty
+read -p "Enter UUID [default cdc72a29-c14b-4741-bd95-e2e3a8f31a56]: " UUID
 UUID="${UUID:-cdc72a29-c14b-4741-bd95-e2e3a8f31a56}"
 
 if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
@@ -64,7 +64,7 @@ for file in app.js .htaccess package.json ws.php; do
   curl -fsSL "$BASE_RAW/$file" -o "$file"
 done
 
-# Escape values
+# Escape values for proper replacement
 ESCAPED_DOMAIN=$(printf '%s\n' "$DOMAIN" | sed 's/[&/\]/\\&/g')
 ESCAPED_UUID=$(printf '%s\n' "$UUID" | sed 's/[&/\]/\\&/g')
 
