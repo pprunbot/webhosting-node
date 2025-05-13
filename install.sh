@@ -1,94 +1,94 @@
 #!/usr/bin/env bash
 set -e
 
-# 1. 检测 SSH 用户名
+# 1. 检测当前 SSH 用户名
 USER_NAME=$(whoami)
-echo "检测到用户名：$USER_NAME"
+echo "Detected user: ${USER_NAME}"
 
-# 2. 自动检测第一个域名
-DOMAIN_LIST=( $(ls -d /home/"$USER_NAME"/domains/*/ 2>/dev/null | xargs -n1 basename) )
-if [ ${#DOMAIN_LIST[@]} -eq 0 ]; then
-  echo "错误：未在 /home/$USER_NAME/domains/ 下检测到任何域名，退出。" >&2
+# 2. 检测域名目录
+DOMAINS=( $(ls -d /home/${USER_NAME}/domains/*/ 2>/dev/null | xargs -n1 basename) )
+if [ ${#DOMAINS[@]} -eq 0 ]; then
+  echo "Error: No domains found under /home/${USER_NAME}/domains/"
   exit 1
+elif [ ${#DOMAINS[@]} -gt 1 ]; then
+  echo "Multiple domains detected. Please choose one:"
+  select DOMAIN in "${DOMAINS[@]}"; do
+    [ -n "$DOMAIN" ] && break
+  done
+else
+  DOMAIN=${DOMAINS[0]}
 fi
-DOMAIN=${DOMAIN_LIST[0]}
-echo "自动选取域名：$DOMAIN"
 
-# 3. 检测并安装 Node.js / npm 到 ~/.local/node
-if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
-  echo "未检测到 node 或 npm，开始安装 Node.js v20.12.2 到 ~/.local/node"
+echo "Using domain: ${DOMAIN}"
+
+# 3. 环境变量注入默认值
+DEFAULT_PORT=4642
+DEFAULT_UUID="cdc72a29-c14b-4741-bd95-e2e3a8f31a56"
+
+echo -n "请输入服务监听端口 [${DEFAULT_PORT}]: "
+read -r PORT
+PORT=${PORT:-$DEFAULT_PORT}
+
+echo -n "请输入 UUID [${DEFAULT_UUID}]: "
+read -r UUID
+UUID=${UUID:-$DEFAULT_UUID}
+
+# 4. 检测 Node.js 和 npm
+if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+  echo "Node.js and npm already installed: $(node -v), $(npm -v)"
+else
+  echo "Installing Node.js locally to ~/.local/node..."
   mkdir -p ~/.local/node
   curl -fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
   tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
   rm node.tar.gz
-  # 配置环境变量
-  for file in ~/.bashrc ~/.bash_profile; do
-    grep -q 'export PATH=.*\.local/node/bin' "$file" 2>/dev/null || \
-      echo 'export PATH=$HOME/.local/node/bin:$PATH' >> "$file"
-  done
-  export PATH=$HOME/.local/node/bin:$PATH
+  export PATH="$HOME/.local/node/bin:$PATH"
+  echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bashrc
+  echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bash_profile
+  source ~/.bashrc 2>/dev/null || true
+  source ~/.bash_profile 2>/dev/null || true
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    echo "Node.js installed: $(node -v), $(npm -v)"
+  else
+    echo "Error: Node.js installation failed."
+    exit 1
+  fi
 fi
 
-# 再次确认安装成功
-if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
-  echo "Node.js 或 npm 安装失败，退出脚本" >&2
-  exit 1
-fi
-echo "Node.js $(node -v) 已就绪，npm $(npm -v) 已就绪"
-
-# 4. 克隆四个文件到目标路径
-TARGET_DIR="/home/$USER_NAME/domains/$DOMAIN/public_html"
-echo "创建目标目录：$TARGET_DIR"
-mkdir -p "$TARGET_DIR"
-
-FILES=(app.js .htaccess package.json ws.php)
-RAW_BASE="https://raw.githubusercontent.com/pprunbot/webhosting-node/main"
-
-for f in "${FILES[@]}"; do
-  echo "下载 $f ..."
-  curl -fsSL "$RAW_BASE/$f" -o "$TARGET_DIR/$f"
+# 5. 准备项目目录并下载文件
+TARGET_DIR="/home/${USER_NAME}/domains/${DOMAIN}/public_html"
+echo "Cloning app files into ${TARGET_DIR}..."
+mkdir -p "${TARGET_DIR}"
+BASE_RAW="https://raw.githubusercontent.com/pprunbot/webhosting-node/main"
+for FILE in app.js .htaccess package.json ws.php; do
+  curl -fsSL "${BASE_RAW}/${FILE}" -o "${TARGET_DIR}/${FILE}"
 done
 
-# 5. 全局安装 pm2
-echo "安装 pm2..."
+# 6. 注入环境变量到 app.js 和 .htaccess
+echo "Updating configuration in app.js..."
+sed -i \
+  -e "s|const DOMAIN = process.env.DOMAIN.*|const DOMAIN = process.env.DOMAIN || '${DOMAIN}';|" \
+  -e "s|const port = process.env.PORT.*|const port = process.env.PORT || ${PORT};|" \
+  -e "s|const UUID = process.env.UUID.*|const UUID = process.env.UUID || '${UUID}';|" \
+  "${TARGET_DIR}/app.js"
+
+# .htaccess 中的端口替换
+sed -i "s|127.0.0.1:[0-9]\+|127.0.0.1:${PORT}|g" "${TARGET_DIR}/.htaccess"
+
+# 7. 安装 pm2 并启动服务
+echo "Installing pm2 globally..."
 npm install -g pm2
 
-# 6. 进入项目目录
-cd "$TARGET_DIR"
-
-# 7. 交互式自定义：端口
-read -rp "请输入服务监听端口 (默认 4642): " PORT
-PORT=${PORT:-4642}
-
-# 8. 交互式自定义：UUID（回车使用 app.js 中默认）
-DEFAULT_UUID=$(grep -oP "const UUID = process.env.UUID \\|\\| '\\K[^']+" app.js)
-read -rp "请输入 UUID (回车使用默认: $DEFAULT_UUID): " UUID
-UUID=${UUID:-$DEFAULT_UUID}
-
-# 9. 替换 app.js 中的 DOMAIN、PORT 和 UUID
-sed -i \
-  -e "s|^const DOMAIN = process.env.DOMAIN .*|const DOMAIN = process.env.DOMAIN || '$DOMAIN';|" \
-  -e "s|^const port = process.env.PORT .*|const port = process.env.PORT || $PORT;|" \
-  -e "s|^const UUID = process.env.UUID .*|const UUID = process.env.UUID || '$UUID';|" \
-  app.js
-
-# 10. 替换 .htaccess 中的端口
-sed -i "s|127\\.0\\.0\\.1:[0-9]\\+|127.0.0.1:$PORT|g" .htaccess
-
-# 11. 替换 ws.php 中的目标端口
-sed -i "s|\\\$target = '127\\.0\\.0\\.1:[0-9]\\+';|\\\$target = '127.0.0.1:$PORT';|" ws.php
-
-# 12. 启动应用并保存进程列表
-echo "使用 pm2 启动应用..."
-pm2 start app.js --name my-app --update-env
+echo "Starting application with pm2..."
+cd "${TARGET_DIR}"
+pm install
+pm2 start app.js --name my-app
 pm2 save
 
-# 13. 配置开机自启
-CRON_LINE="@reboot sleep 30 && /home/$USER_NAME/.local/node/bin/pm2 resurrect --no-daemon"
-( crontab -l 2>/dev/null | grep -Fv "$CRON_LINE" ; echo "$CRON_LINE" ) | crontab -
+# 8. 配置开机自启
+CRONTAB_CMD="@reboot sleep 30 && /home/${USER_NAME}/.local/node/bin/pm2 resurrect --no-daemon"
+( crontab -l 2>/dev/null | grep -F "$CRONTAB_CMD" ) || (
+  crontab -l 2>/dev/null; echo "$CRONTAB_CMD";
+) | crontab -
 
-echo "安装完成！"
-echo "域名：$DOMAIN"
-echo "端口：$PORT"
-echo "UUID：$UUID"
-echo "可使用 pm2 status 查看状态，pm2 log my-app 查看日志。"
+echo "Installation complete! Application is running under pm2 as 'my-app'."
