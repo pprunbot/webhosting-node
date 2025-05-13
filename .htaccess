@@ -1,6 +1,6 @@
 RewriteEngine On
 RewriteCond %{HTTP:Upgrade} =websocket [NC]
-RewriteRule ^(.*)$ ws://127.0.0.1:4000/$1 [P,L]
+RewriteRule ^(.*)$ ws://127.0.0.1:$PORT/$1 [P,L]
 
 RewriteCond %{HTTP:Upgrade} !=websocket [NC]
-RewriteRule ^(.*)$ http://127.0.0.1:4000/$1 [P,L]
+RewriteRule ^(.*)$ http://127.0.0.1:$PORT/$1 [P,L]
