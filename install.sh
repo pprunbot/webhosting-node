@@ -5,14 +5,14 @@ USER=$(whoami)
 
 # 提示用户输入 UUID 和端口号
 echo "请输入 UUID (例如：123e4567-e89b-12d3-a456-426614174000)："
-read UUID
+read -p "UUID: " UUID
 if [ -z "$UUID" ]; then
     echo "UUID 不能为空，退出安装"
     exit 1
 fi
 
 echo "请输入端口号 (例如：8080)："
-read PORT
+read -p "端口号: " PORT
 if [ -z "$PORT" ]; then
     echo "端口号不能为空，退出安装"
     exit 1
