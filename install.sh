@@ -1,81 +1,127 @@
 #!/bin/bash
 
-# 确保脚本以交互模式运行
-if [[ ! $- =~ i ]]; then
-    echo "脚本需要交互式终端。请直接运行脚本，或者使用 bash 执行该脚本。"
-    exit 1
+# 退出脚本执行错误
+set -e
+
+# 获取当前用户名
+USERNAME=$(whoami)
+echo "检测到当前用户名: $USERNAME"
+
+# 检测域名目录
+DOMAINS_DIR="/home/$USERNAME/domains"
+if [ ! -d "$DOMAINS_DIR" ]; then
+  echo "错误：未找到域名目录 $DOMAINS_DIR"
+  exit 1
 fi
 
-# 获取当前 SSH 用户名
-USER=$(whoami)
+# 获取可用域名列表
+DOMAINS=($(ls -d $DOMAINS_DIR/*/ | xargs -n1 basename))
+if [ ${#DOMAINS[@]} -eq 0 ]; then
+  echo "错误：未找到任何域名配置"
+  exit 1
+fi
 
-# 提示用户输入 UUID 和端口号
-echo "请输入 UUID (例如：123e4567-e89b-12d3-a456-426614174000)："
-read UUID
+# 显示域名选择菜单
+echo "可用的域名："
+for i in "${!DOMAINS[@]}"; do
+  echo "$((i+1)). ${DOMAINS[$i]}"
+done
+
+# 获取用户选择的域名
+read -p "请选择域名（输入数字）[默认1]: " DOMAIN_INDEX
+DOMAIN_INDEX=${DOMAIN_INDEX:-1}
+if [[ ! $DOMAIN_INDEX =~ ^[0-9]+$ ]] || [ $DOMAIN_INDEX -lt 1 ] || [ $DOMAIN_INDEX -gt ${#DOMAINS[@]} ]; then
+  echo "无效的选择"
+  exit 1
+fi
+
+DOMAIN=${DOMAINS[$((DOMAIN_INDEX-1))]}
+echo "已选择域名: $DOMAIN"
+
+# 自定义端口输入
+read -p "请输入端口号 [默认4000]: " PORT
+PORT=${PORT:-4000}
+
+# 验证端口号
+if [[ ! $PORT =~ ^[0-9]+$ ]] || [ $PORT -lt 1 ] || [ $PORT -gt 65535 ]; then
+  echo "无效的端口号"
+  exit 1
+fi
+
+# UUID输入
+read -p "请输入UUID [默认随机生成]: " UUID
 if [ -z "$UUID" ]; then
-    echo "UUID 不能为空，退出安装"
-    exit 1
+  UUID=$(cat /proc/sys/kernel/random/uuid)
+  echo "已生成随机UUID: $UUID"
 fi
 
-echo "请输入端口号 (例如：8080)："
-read PORT
-if [ -z "$PORT" ]; then
-    echo "端口号不能为空，退出安装"
-    exit 1
-fi
-
-# 获取域名
-DOMAIN=$(ls -d /home/*/domains/*/ | xargs -n1 basename | head -n 1)
-if [ -z "$DOMAIN" ]; then
-    echo "无法检测到域名，退出安装"
-    exit 1
-fi
-echo "检测到的域名：$DOMAIN"
-
-# 安装 Node.js 和 PM2
-if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
-    echo "Node.js 或 npm 未安装，开始安装..."
+# 检测Node.js安装
+check_node() {
+  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    echo "正在安装Node.js..."
+    
+    # 创建安装目录
     mkdir -p ~/.local/node
+    
+    # 下载Node.js
     curl -fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
+    
+    # 解压文件
     tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
+    
+    # 添加环境变量
     echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
+    
+    # 立即生效
     source ~/.bashrc
-fi
+    source ~/.bash_profile
+    
+    # 清理临时文件
+    rm node.tar.gz
+  fi
 
-# 检查 Node.js 和 npm 是否安装成功
-if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
-    echo "Node.js 或 npm 安装失败，退出安装"
+  # 再次验证安装
+  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    echo "Node.js安装失败，请手动安装后重试"
     exit 1
-fi
+  fi
+}
 
-# 安装 PM2
+check_node
+
+# 安装PM2
+echo "正在安装PM2..."
 npm install -g pm2
 
-# 克隆项目并修改配置
-echo "克隆所需的文件..."
-if [ -d "/home/$USER/domains/$DOMAIN/public_html" ]; then
-    echo "目标目录已存在，跳过克隆步骤"
-else
-    git clone https://github.com/pprunbot/webhosting-node.git /home/$USER/domains/$DOMAIN/public_html
-fi
+# 创建项目目录
+PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
+mkdir -p $PROJECT_DIR
+cd $PROJECT_DIR
+
+# 下载项目文件
+echo "正在下载项目文件..."
+FILES=("app.js" ".htaccess" "package.json" "ws.php")
+for file in "${FILES[@]}"; do
+  curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
+done
 
 # 修改配置文件
-echo "修改 app.js 配置..."
-sed -i "s|const DOMAIN = process.env.DOMAIN || '.*'|const DOMAIN = process.env.DOMAIN || '$DOMAIN';|" /home/$USER/domains/$DOMAIN/public_html/app.js
-sed -i "s|const PORT = process.env.PORT || 3000|const PORT = process.env.PORT || $PORT;|" /home/$USER/domains/$DOMAIN/public_html/app.js
-sed -i "s|const UUID = process.env.UUID || '.*'|const UUID = process.env.UUID || '$UUID';|" /home/$USER/domains/$DOMAIN/public_html/app.js
+sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
+sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
+sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
 
-# 启动应用程序
-echo "启动应用程序..."
-cd /home/$USER/domains/$DOMAIN/public_html
+# 安装依赖
+npm install
+
+# 启动PM2服务
 pm2 start app.js --name my-app
 pm2 save
 
-# 设置 crontab 自动恢复 PM2
-echo "设置 crontab 以便系统重启时自动恢复 PM2..."
-if [ ! -d /tmp ]; then
-    mkdir /tmp
-fi
-crontab -l | { cat; echo "@reboot sleep 30 && /home/$USER/.local/node/bin/pm2 resurrect --no-daemon"; } | crontab -
+# 添加定时任务
+(crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
 
-echo "安装完成，应用程序已通过 PM2 启动，并将在重启时自动恢复。"
+echo "安装完成！"
+echo "访问地址：https://$DOMAIN"
+echo "UUID: $UUID"
+echo "端口: $PORT"
