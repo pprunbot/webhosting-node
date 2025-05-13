@@ -10,8 +10,10 @@ if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
   rm /tmp/node.tar.gz
 
   # 将 ~/.local/node/bin 加入 PATH（只添加一次）
-  grep -q 'export PATH=\$HOME/.local/node/bin' ~/.bashrc 2>/dev/null || echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
-  grep -q 'export PATH=\$HOME/.local/node/bin' ~/.bash_profile 2>/dev/null || echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
+  grep -q 'export PATH=\$HOME/.local/node/bin' ~/.bashrc 2>/dev/null || \
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
+  grep -q 'export PATH=\$HOME/.local/node/bin' ~/.bash_profile 2>/dev/null || \
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
 
   # 立即生效
   export PATH="$HOME/.local/node/bin:$PATH"
@@ -26,7 +28,6 @@ fi
 echo "检测通过：node $(node -v)，npm $(npm -v)"
 
 # —— 2. 交互：获取域名 —— 
-# 从 /dev/tty 读取，确保非交互管道也能提示
 read -p "请输入项目域名（例如 dataonline.x86.dpdns.org）: " DOMAIN < /dev/tty
 if [ -z "$DOMAIN" ]; then
   echo "未提供域名，退出。"
@@ -54,20 +55,16 @@ PORT=${PORT:-4642}
 read -p "请输入 UUID [回车使用默认 cdc72a29-c14b-4741-bd95-e2e3a8f31a56]: " UUID < /dev/tty
 UUID=${UUID:-cdc72a29-c14b-4741-bd95-e2e3a8f31a56}
 
-# —— 6. 在文件中替换端口 & UUID —— 
-echo "在文件中替换 PORT 和 UUID …"
-# app.js: 环境变量默认值 & 硬编码地址
-sed -i "s|\(const port = process.env.PORT || '\)[^']*|\1$PORT|g" "$TARGET_DIR/app.js"
-sed -i "s|127\.0\.0\.1:[0-9]\+|127.0.0.1:$PORT|g" "$TARGET_DIR/app.js"
+# —— 6. 在文件中替换默认值 —— 
+echo "全局替换默认端口（4642）为 $PORT，替换默认 UUID 为 $UUID ..."
+# 同时作用于 app.js、.htaccess、ws.php
+sed -i "s/4642/$PORT/g" \
+  "$TARGET_DIR/app.js" \
+  "$TARGET_DIR/.htaccess" \
+  "$TARGET_DIR/ws.php"
 
-# .htaccess
-sed -i "s|127\.0\.0\.1:[0-9]\+|127.0.0.1:$PORT|g" "$TARGET_DIR/.htaccess"
-
-# ws.php
-sed -i "s|tcp://127:[0-9]\+|tcp://127:$PORT|g" "$TARGET_DIR/ws.php"
-
-# UUID
-sed -i "s|\(const UUID = process.env.UUID || '\)[^']*|\1$UUID|g" "$TARGET_DIR/app.js"
+sed -i "s/cdc72a29-c14b-4741-bd95-e2e3a8f31a56/$UUID/g" \
+  "$TARGET_DIR/app.js"
 
 # —— 7. 启动应用 —— 
 cd "$TARGET_DIR"
@@ -77,7 +74,8 @@ pm2 save
 # —— 8. 添加开机自启 —— 
 SSH_USER=$(whoami)
 CRON_CMD="@reboot sleep 30 && $HOME/.local/node/bin/pm2 resurrect --no-daemon"
-( crontab -l 2>/dev/null | grep -F "$CRON_CMD" ) || \
+if ! crontab -l 2>/dev/null | grep -Fq "$CRON_CMD"; then
   ( crontab -l 2>/dev/null; echo "$CRON_CMD" ) | crontab -
+fi
 
 echo "安装完成！访问：http://$DOMAIN/ 查看是否正常。"
