@@ -1,18 +1,24 @@
 #!/bin/bash
 
+# 确保脚本以交互模式运行
+if [[ ! $- =~ i ]]; then
+    echo "脚本需要交互式终端。请直接运行脚本，或者使用 bash 执行该脚本。"
+    exit 1
+fi
+
 # 获取当前 SSH 用户名
 USER=$(whoami)
 
 # 提示用户输入 UUID 和端口号
 echo "请输入 UUID (例如：123e4567-e89b-12d3-a456-426614174000)："
-read -p "UUID: " UUID
+read UUID
 if [ -z "$UUID" ]; then
     echo "UUID 不能为空，退出安装"
     exit 1
 fi
 
 echo "请输入端口号 (例如：8080)："
-read -p "端口号: " PORT
+read PORT
 if [ -z "$PORT" ]; then
     echo "端口号不能为空，退出安装"
     exit 1
@@ -47,7 +53,13 @@ npm install -g pm2
 
 # 克隆项目并修改配置
 echo "克隆所需的文件..."
-git clone https://github.com/pprunbot/webhosting-node.git /home/$USER/domains/$DOMAIN/public_html
+if [ -d "/home/$USER/domains/$DOMAIN/public_html" ]; then
+    echo "目标目录已存在，跳过克隆步骤"
+else
+    git clone https://github.com/pprunbot/webhosting-node.git /home/$USER/domains/$DOMAIN/public_html
+fi
+
+# 修改配置文件
 echo "修改 app.js 配置..."
 sed -i "s|const DOMAIN = process.env.DOMAIN || '.*'|const DOMAIN = process.env.DOMAIN || '$DOMAIN';|" /home/$USER/domains/$DOMAIN/public_html/app.js
 sed -i "s|const PORT = process.env.PORT || 3000|const PORT = process.env.PORT || $PORT;|" /home/$USER/domains/$DOMAIN/public_html/app.js
