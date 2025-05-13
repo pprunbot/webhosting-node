@@ -5,7 +5,14 @@ USER_NAME="$(whoami)"
 HOME_DIR="${HOME:-/home/$USER_NAME}"
 echo "Detected user: $USER_NAME"
 
-mapfile -t DOMAINS < <(ls -d "$HOME_DIR/domains"/*/ 2>/dev/null | xargs -n1 basename)
+# Alternative method to list domains without mapfile
+DOMAINS=()
+for d in "$HOME_DIR/domains"/*/; do
+  if [ -d "$d" ]; then
+    DOMAINS+=("$(basename "$d")")
+  fi
+done
+
 if (( ${#DOMAINS[@]} == 0 )); then
   echo "No domains found under $HOME_DIR/domains"
   exit 1
