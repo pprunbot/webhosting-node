@@ -1,9 +1,7 @@
 #!/bin/bash
 
-# 退出脚本执行错误
 set -e
 
-# 颜色定义
 RED='\033[31m'
 GREEN='\033[32m'
 YELLOW='\033[33m'
@@ -13,52 +11,46 @@ CYAN='\033[36m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-# 项目信息
 PROJECT_URL="https://github.com/pprunbot/webhosting-node"
 
-# 绘制分隔线
 draw_line() {
   printf "%$(tput cols)s\n" | tr ' ' '─'
 }
 
-# 绘制美化标题
 print_title() {
-  echo -e "${GREEN}${BOLD}"
-  echo " __        __   _     _           _           _   _           _       _             "
-  echo " \ \      / /__| |__ (_)_ __  ___| |_ ___  __| | | |__   ___ | | ___ (_)_ __   __ _ "
-  echo "  \ \ /\ / / _ \ '_ \| | '_ \/ __| __/ _ \/ _\` | | '_ \ / _ \| |/ _ \| | '_ \ / _\` |"
-  echo "   \ V  V /  __/ |_) | | | | \__ \ ||  __/ (_| | | | | | (_) | | (_) | | | | | (_| |"
-  echo "    \_/\_/ \___|_.__/|_|_| |_|___/\__\___|\__,_| |_| |_|\___/|_|\___/|_|_| |_|\__, |"
-  echo "                                                                              |___/ "
+  echo -e "${BOLD}${CYAN}"
+  cat << "EOF"
+__        __   _     _           _   _             _           
+\ \      / /__| |__ (_) ___  ___| |_(_)_   _____  | | ___  ___ 
+ \ \ /\ / / _ \ '_ \| |/ _ \/ __| __| \ \ / / _ \ | |/ _ \/ __|
+  \ V  V /  __/ |_) | |  __/\__ \ |_| |\ V /  __/ | | (_) \__ \
+   \_/\_/ \___|_.__/|_|\___||___/\__|_| \_/ \___| |_|\___/|___/
+EOF
   echo -e "${RESET}"
 }
 
-# 显示项目信息
 show_header() {
   clear
   print_title
   echo -e "${CYAN}项目地址: ${YELLOW}${PROJECT_URL}${RESET}\n"
 }
 
-# 获取当前用户名
 USERNAME=$(whoami)
 
-# 初始界面
-show_header "WebHosting Node 管理工具"
-
-# 主菜单
 main_menu() {
   echo -e "${BOLD}${MAGENTA}主菜单：${RESET}"
   echo -e "  ${GREEN}1)${RESET} 新建项目部署"
   echo -e "  ${GREEN}2)${RESET} 卸载现有项目"
   echo -e "  ${GREEN}3)${RESET} 退出系统"
+  echo -e "  ${GREEN}4)${RESET} 修改端口和UUID"
   draw_line
-  read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-3]: ${RESET}")" MAIN_CHOICE
+  read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-4]: ${RESET}")" MAIN_CHOICE
 
   case $MAIN_CHOICE in
     1) install_menu ;;
     2) uninstall_menu ;;
     3) exit 0 ;;
+    4) modify_config_menu ;;
     *) 
       echo -e "${RED}无效选项，请重新选择${RESET}"
       sleep 1
@@ -67,194 +59,162 @@ main_menu() {
   esac
 }
 
-# 安装菜单
 install_menu() {
-  show_header "新建项目部署"
-  
-  # 检测域名目录
-  DOMAINS_DIR="/home/$USERNAME/domains"
-  if [ ! -d "$DOMAINS_DIR" ]; then
-    echo -e "${RED}错误：未找到域名目录 ${DOMAINS_DIR}${RESET}"
-    exit 1
-  fi
-
-  # 获取可用域名列表
-  DOMAINS=($(ls -d $DOMAINS_DIR/*/ | xargs -n1 basename))
-  if [ ${#DOMAINS[@]} -eq 0 ]; then
-    echo -e "${RED}错误：未找到任何域名配置${RESET}"
-    exit 1
-  fi
-
-  # 显示域名选择菜单
-  echo -e "${BOLD}${BLUE}可用域名列表：${RESET}"
-  for i in "${!DOMAINS[@]}"; do
-    printf "${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${DOMAINS[$i]}"
-  done
-
-  # 获取用户选择的域名
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请选择域名（输入数字）[默认1]: ${RESET}")" DOMAIN_INDEX
-  DOMAIN_INDEX=${DOMAIN_INDEX:-1}
-  if [[ ! $DOMAIN_INDEX =~ ^[0-9]+$ ]] || [ $DOMAIN_INDEX -lt 1 ] || [ $DOMAIN_INDEX -gt ${#DOMAINS[@]} ]; then
-    echo -e "${RED}无效的选择${RESET}"
-    exit 1
-  fi
-
-  DOMAIN=${DOMAINS[$((DOMAIN_INDEX-1))]}
-  echo -e "\n${GREEN}✓ 已选择域名: ${YELLOW}${DOMAIN}${RESET}"
-
-  # 自定义端口输入
-  draw_line
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请输入端口号 [默认4000]: ${RESET}")" PORT
+  show_header
+  echo -e "${BOLD}${BLUE}请输入以下信息以开始部署：${RESET}"
+  read -p "$(echo -e "${CYAN}域名 (例如 a.360.cloudns.be): ${RESET}")" DOMAIN
+  read -p "$(echo -e "${CYAN}端口号 (默认 4000): ${RESET}")" PORT
   PORT=${PORT:-4000}
-
-  # 验证端口号
-  if [[ ! $PORT =~ ^[0-9]+$ ]] || [ $PORT -lt 1 ] || [ $PORT -gt 65535 ]; then
-    echo -e "${RED}无效的端口号${RESET}"
-    exit 1
-  fi
-
-  # UUID输入
-  draw_line
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请输入UUID [默认随机生成]: ${RESET}")" UUID
+  read -p "$(echo -e "${CYAN}自定义 UUID (默认随机): ${RESET}")" UUID
   if [ -z "$UUID" ]; then
     UUID=$(cat /proc/sys/kernel/random/uuid)
-    echo -e "${GREEN}✓ 已生成随机UUID: ${YELLOW}${UUID}${RESET}"
+    echo -e "${GREEN}生成的 UUID: ${YELLOW}$UUID${RESET}"
   fi
+  read -p "$(echo -e "${CYAN}自定义用户名 (默认 user): ${RESET}")" USERNAME_INPUT
+  USERNAME_INPUT=${USERNAME_INPUT:-user}
 
-  # 开始部署流程
-  start_installation
+  check_node
+
+  echo -e "\n${BLUE}开始部署...${RESET}"
+
+  BASE_DIR="/home/${USERNAME}/domains/${DOMAIN}/public_nodejs"
+  mkdir -p "${BASE_DIR}"
+
+  cd "${BASE_DIR}"
+  rm -rf webhosting-node
+  git clone "${PROJECT_URL}" webhosting-node
+
+  cd webhosting-node
+  npm install
+
+  sed -i "s|process.env.DOMAIN || '.*'|process.env.DOMAIN || '${DOMAIN}'|" app.js
+  sed -i "s|process.env.PORT || .*|process.env.PORT || ${PORT}|" app.js
+  sed -i "s|process.env.UUID || '.*'|process.env.UUID || '${UUID}'|" app.js
+  sed -i "s/user/${USERNAME_INPUT}/g" app.js
+  sed -i "s/\$PORT/${PORT}/g" .htaccess ws.php
+
+  npx pm2 start app.js --name "my-app-${DOMAIN}"
+  npx pm2 save
+  npx pm2 startup | tail -n1 | bash
+
+  draw_line
+  echo -e "${GREEN}${BOLD}部署完成！${RESET}"
+  echo -e "${CYAN}访问地址\t: ${YELLOW}https://${DOMAIN}${RESET}"
+  echo -e "${CYAN}UUID\t\t: ${YELLOW}${UUID}${RESET}"
+  echo -e "${CYAN}端口号\t\t: ${YELLOW}${PORT}${RESET}"
+  echo -e "${CYAN}用户名\t\t: ${YELLOW}${USERNAME_INPUT}${RESET}"
+  echo -e "${CYAN}项目目录\t: ${YELLOW}${BASE_DIR}/webhosting-node${RESET}"
+  draw_line
+  echo ""
+  read -p "$(echo -e "${BOLD}${CYAN}按任意键返回主菜单...${RESET}")" _
+  main_menu
 }
 
-# 卸载菜单
 uninstall_menu() {
-  show_header "项目卸载中心"
-  
-  # 获取已部署项目
-  DOMAINS_DIR="/home/$USERNAME/domains"
-  INSTALLED=()
-  for domain in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
-    if [ -d "$DOMAINS_DIR/$domain/public_html" ]; then
-      INSTALLED+=("$domain")
-    fi
-  done
+  show_header
+  echo -e "${BOLD}${BLUE}请输入要卸载的域名项目：${RESET}"
+  read -p "$(echo -e "${CYAN}域名 (例如 a.360.cloudns.be): ${RESET}")" DOMAIN
+  BASE_DIR="/home/${USERNAME}/domains/${DOMAIN}/public_nodejs/webhosting-node"
 
-  if [ ${#INSTALLED[@]} -eq 0 ]; then
-    echo -e "${YELLOW}没有找到可卸载的项目${RESET}"
+  if [ ! -d "$BASE_DIR" ]; then
+    echo -e "${RED}未找到对应项目目录！${RESET}"
     sleep 2
     main_menu
     return
   fi
 
-  echo -e "${BOLD}${RED}⚠ 警告：这将永久删除项目数据！${RESET}\n"
+  pm2 delete "my-app-${DOMAIN}" || true
+  rm -rf "$BASE_DIR"
+
+  draw_line
+  echo -e "${GREEN}已卸载 ${DOMAIN} 项目${RESET}"
+  draw_line
+  echo ""
+  read -p "$(echo -e "${BOLD}${CYAN}按任意键返回主菜单...${RESET}")" _
+  main_menu
+}
+
+check_node() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo -e "${YELLOW}未检测到 Node.js，正在安装...${RESET}"
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+    apt-get install -y nodejs
+  fi
+
+  if ! command -v pm2 >/dev/null 2>&1; then
+    echo -e "${YELLOW}未检测到 PM2，正在安装...${RESET}"
+    npm install -g pm2
+  fi
+}
+
+modify_config_menu() {
+  show_header "修改端口与 UUID"
+
+  DOMAINS_DIR="/home/$USERNAME/domains"
+  DEPLOYED=()
+  for domain in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
+    if [ -d "$DOMAINS_DIR/$domain/public_nodejs/webhosting-node" ]; then
+      DEPLOYED+=("$domain")
+    fi
+  done
+
+  if [ ${#DEPLOYED[@]} -eq 0 ]; then
+    echo -e "${YELLOW}未找到已部署项目${RESET}"
+    sleep 2
+    main_menu
+    return
+  fi
+
   echo -e "${BOLD}${BLUE}已部署项目列表：${RESET}"
-  for i in "${!INSTALLED[@]}"; do
-    printf "${RED}%2d)${RESET} %s\n" "$((i+1))" "${INSTALLED[$i]}"
+  for i in "${!DEPLOYED[@]}"; do
+    printf "${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${DEPLOYED[$i]}"
   done
 
   echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请选择要卸载的项目 [1-${#INSTALLED[@]}]: ${RESET}")" UNINSTALL_INDEX
-  if [[ ! $UNINSTALL_INDEX =~ ^[0-9]+$ ]] || [ $UNINSTALL_INDEX -lt 1 ] || [ $UNINSTALL_INDEX -gt ${#INSTALLED[@]} ]; then
+  read -p "$(echo -e "${BOLD}${CYAN}请选择要修改的项目 [1-${#DEPLOYED[@]}]: ${RESET}")" SELECTED_INDEX
+  if [[ ! $SELECTED_INDEX =~ ^[0-9]+$ ]] || [ $SELECTED_INDEX -lt 1 ] || [ $SELECTED_INDEX -gt ${#DEPLOYED[@]} ]; then
     echo -e "${RED}无效的选择${RESET}"
     exit 1
   fi
 
-  SELECTED_DOMAIN=${INSTALLED[$((UNINSTALL_INDEX-1))]}
-  
-  # 确认操作
-  read -p "$(echo -e "${BOLD}${RED}确认要卸载 ${SELECTED_DOMAIN} 吗？[y/N]: ${RESET}")" CONFIRM
-  if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}已取消卸载操作${RESET}"
-    exit 0
+  DOMAIN=${DEPLOYED[$((SELECTED_INDEX-1))]}
+  APP_DIR="${DOMAINS_DIR}/${DOMAIN}/public_nodejs/webhosting-node"
+
+  echo ""
+  read -p "$(echo -e "${BOLD}${CYAN}请输入新端口号 [默认4000]: ${RESET}")" NEW_PORT
+  NEW_PORT=${NEW_PORT:-4000}
+  if [[ ! $NEW_PORT =~ ^[0-9]+$ ]] || [ $NEW_PORT -lt 1 ] || [ $NEW_PORT -gt 65535 ]; then
+    echo -e "${RED}无效的端口号${RESET}"
+    exit 1
   fi
 
-  # 执行卸载
-  echo -e "\n${BLUE}正在停止PM2服务...${RESET}"
-  pm2 stop "my-app-${SELECTED_DOMAIN}" || true
-  pm2 delete "my-app-${SELECTED_DOMAIN}" || true
-  pm2 save
+  read -p "$(echo -e "${BOLD}${CYAN}请输入新UUID [默认随机生成]: ${RESET}")" NEW_UUID
+  if [ -z "$NEW_UUID" ]; then
+    NEW_UUID=$(cat /proc/sys/kernel/random/uuid)
+    echo -e "${GREEN}✓ 已生成随机UUID: ${YELLOW}${NEW_UUID}${RESET}"
+  fi
 
-  echo -e "${BLUE}正在清理项目文件...${RESET}"
-  rm -rf "${DOMAINS_DIR}/${SELECTED_DOMAIN}/public_html"
+  echo -e "\n${BLUE}正在修改配置文件...${RESET}"
+  sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" "$APP_DIR/app.js"
+  sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$NEW_UUID';/" "$APP_DIR/app.js"
+  sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $NEW_PORT;/" "$APP_DIR/app.js"
+  sed -i "s/\$PORT/$NEW_PORT/g" "$APP_DIR/.htaccess"
+  sed -i "s/\$PORT/$NEW_PORT/g" "$APP_DIR/ws.php"
 
-  echo -e "\n${GREEN}✓ ${SELECTED_DOMAIN} 已成功卸载${RESET}"
-  sleep 2
+  echo -e "\n${BLUE}正在重启 PM2 服务...${RESET}"
+  pm2 restart "my-app-${DOMAIN}"
+
+  draw_line
+  echo -e "${GREEN}${BOLD}修改完成！${RESET}"
+  echo -e "${CYAN}访问地址\t: ${YELLOW}https://${DOMAIN}${RESET}"
+  echo -e "${CYAN}UUID\t\t: ${YELLOW}${NEW_UUID}${RESET}"
+  echo -e "${CYAN}端口号\t\t: ${YELLOW}${NEW_PORT}${RESET}"
+  echo -e "${CYAN}项目目录\t: ${YELLOW}${APP_DIR}${RESET}"
+  draw_line
+  echo ""
+  read -p "$(echo -e "${BOLD}${CYAN}按任意键返回主菜单...${RESET}")" _
   main_menu
 }
 
-# 检测Node.js安装
-check_node() {
-  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "\n${BLUE}正在安装Node.js...${RESET}"
-    
-    mkdir -p ~/.local/node
-    echo -e "${CYAN}▶ 下载Node.js运行环境...${RESET}"
-    curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
-    echo -e "\n${CYAN}▶ 解压文件...${RESET}"
-    tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
-    echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
-    source ~/.bashrc
-    source ~/.bash_profile
-    rm node.tar.gz
-  fi
-
-  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
-    exit 1
-  fi
-}
-
-# 安装流程
-start_installation() {
-  check_node
-  echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
-  npm install -g pm2
-
-  PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
-  mkdir -p $PROJECT_DIR
-  cd $PROJECT_DIR
-
-  echo -e "\n${BLUE}正在下载项目文件...${RESET}"
-  FILES=("app.js" ".htaccess" "package.json" "ws.php")
-  for file in "${FILES[@]}"; do
-    echo -e "${CYAN}▶ 下载 $file...${RESET}"
-    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
-  done
-
-  echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
-  npm install
-  if [ $? -ne 0 ]; then
-    echo -e "${RED}错误：npm依赖安装失败，请检查网络连接和package.json配置${RESET}"
-    exit 1
-  fi
-
-  echo -e "\n${BLUE}正在配置应用参数...${RESET}"
-  sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
-  sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
-  sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
-  sed -i "s/\$PORT/$PORT/g" .htaccess
-  sed -i "s/\$PORT/$PORT/g" ws.php
-
-  echo -e "\n${BLUE}正在启动PM2服务...${RESET}"
-  pm2 start app.js --name "my-app-${DOMAIN}"
-  pm2 save
-
-  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
-
-  draw_line
-  echo -e "${GREEN}${BOLD}部署成功！${RESET}"
-  echo -e "${CYAN}访问地址\t: ${YELLOW}https://${DOMAIN}${RESET}"
-  echo -e "${CYAN}UUID\t\t: ${YELLOW}${UUID}${RESET}"
-  echo -e "${CYAN}端口号\t\t: ${YELLOW}${PORT}${RESET}"
-  echo -e "${CYAN}项目目录\t: ${YELLOW}${PROJECT_DIR}${RESET}"
-  echo -e "${CYAN}GitHub仓库\t: ${YELLOW}${PROJECT_URL}${RESET}"
-  draw_line
-  echo ""
-}
-
-# 启动主菜单
+show_header
 main_menu
