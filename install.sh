@@ -14,24 +14,22 @@ ORANGE='\033[38;5;208m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-# 图形元素
-PROJECT_NAME=$(cat <<-'EOF'
- ██████╗ ██████╗ ███████╗██╗  ██╗     ██████╗ ██████╗ ███╗   ██╗
+# 图形元素（修正heredoc问题）
+PROJECT_NAME=' ██████╗ ██████╗ ███████╗██╗  ██╗     ██████╗ ██████╗ ███╗   ██╗
 ██╔═══██╗██╔══██╗██╔════╝██║  ██║    ██╔════╝██╔═══██╗████╗  ██║
 ██║   ██║██████╔╝█████╗  ███████║    ██║     ██║   ██║██╔██╗ ██║
 ██║   ██║██╔═══╝ ██╔══╝  ██╔══██║    ██║     ██║   ██║██║╚██╗██║
 ╚██████╔╝██║     ███████╗██║  ██║    ╚██████╗╚██████╔╝██║ ╚████║
- ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝
-EOF
-)
+ ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝'
 
 # 项目信息
 PROJECT_URL="https://github.com/pprunbot/webhosting-node"
-VERSION="2.1.0"
+VERSION="2.1.1"
 
 # 绘制分隔线
 draw_line() {
-  echo -e "${BLUE}┌──────────────────────────────────────────────────────────────┐${RESET}"
+  cols=$(tput cols)
+  echo -e "${BLUE}┌$(printf "%*s" $((cols-2)) | tr ' ' '─')┐${RESET}"
 }
 
 # 显示标题
@@ -45,12 +43,12 @@ show_header() {
   echo
 }
 
-# 进度动画
+# 进度动画（改进兼容性）
 show_spinner() {
   local pid=$!
   local delay=0.1
   local spinstr='|/-\'
-  while [ "$(ps a | awk '{print $1}' | grep $pid)" ]; do
+  while kill -0 $pid 2>/dev/null; do
     local temp=${spinstr#?}
     printf " [%c]  " "$spinstr"
     local spinstr=$temp${spinstr%"$temp"}
@@ -60,7 +58,7 @@ show_spinner() {
   printf "    \b\b\b\b"
 }
 
-# 卸载功能
+# 卸载功能（增加路径验证）
 uninstall() {
   show_header
   echo -e "${RED}${BOLD}⚠️ 警告：这将删除所有安装内容！${RESET}"
@@ -75,7 +73,7 @@ uninstall() {
     crontab -l | grep -v 'pm2 resurrect' | crontab -
     
     echo -e "${CYAN}▶ 清理项目文件...${RESET}"
-    [ -d "$PROJECT_DIR" ] && rm -rf "$PROJECT_DIR"
+    [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ] && rm -rf "$PROJECT_DIR"
     
     echo -e "${CYAN}▶ 移除Node.js环境...${RESET}"
     [ -d ~/.local/node ] && rm -rf ~/.local/node
@@ -87,7 +85,7 @@ uninstall() {
   exit 0
 }
 
-# 主菜单
+# 主菜单（增加输入验证）
 main_menu() {
   show_header
   echo -e "${BOLD}${GREEN}请选择操作：${RESET}"
@@ -97,30 +95,29 @@ main_menu() {
   echo
   draw_line
   
-  read -p "$(echo -e "${BOLD}请输入选项 (1-3): ${RESET}")" choice
-  
-  case $choice in
-    1) install_process ;;
-    2) uninstall ;;
-    3) exit 0 ;;
-    *) echo -e "${RED}无效选项，请重新输入${RESET}"; sleep 1; main_menu ;;
-  esac
+  while true; do
+    read -p "$(echo -e "${BOLD}请输入选项 (1-3): ${RESET}")" choice
+    case $choice in
+      1) install_process; break ;;
+      2) uninstall; break ;;
+      3) exit 0 ;;
+      *) echo -e "${RED}无效选项，请输入数字1-3${RESET}"; sleep 1 ;;
+    esac
+  done
 }
 
-# 安装流程
+# 安装流程（增强错误处理）
 install_process() {
-  # 获取当前用户名
   USERNAME=$(whoami)
-  
-  # 检测域名目录
   DOMAINS_DIR="/home/$USERNAME/domains"
+  
+  # 域名目录验证
   if [ ! -d "$DOMAINS_DIR" ]; then
     echo -e "${RED}错误：未找到域名目录 ${DOMAINS_DIR}${RESET}"
     exit 1
   fi
 
-  # 获取可用域名列表
-  DOMAINS=($(ls -d $DOMAINS_DIR/*/ | xargs -n1 basename))
+  DOMAINS=($(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename))
   if [ ${#DOMAINS[@]} -eq 0 ]; then
     echo -e "${RED}错误：未找到任何域名配置${RESET}"
     exit 1
@@ -133,91 +130,119 @@ install_process() {
     printf "${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${DOMAINS[$i]}"
   done
 
-  read -p "$(echo -e "${BOLD}${CYAN}请选择域名（输入数字）[默认1]: ${RESET}")" DOMAIN_INDEX
-  DOMAIN_INDEX=${DOMAIN_INDEX:-1}
-  if [[ ! $DOMAIN_INDEX =~ ^[0-9]+$ ]] || [ $DOMAIN_INDEX -lt 1 ] || [ $DOMAIN_INDEX -gt ${#DOMAINS[@]} ]; then
-    echo -e "${RED}无效的选择${RESET}"
-    exit 1
-  fi
+  while true; do
+    read -p "$(echo -e "${BOLD}${CYAN}请选择域名（输入数字）[默认1]: ${RESET}")" DOMAIN_INDEX
+    DOMAIN_INDEX=${DOMAIN_INDEX:-1}
+    if [[ $DOMAIN_INDEX =~ ^[0-9]+$ ]] && [ $DOMAIN_INDEX -ge 1 ] && [ $DOMAIN_INDEX -le ${#DOMAINS[@]} ]; then
+      break
+    else
+      echo -e "${RED}无效的选择，请重新输入${RESET}"
+    fi
+  done
 
   DOMAIN=${DOMAINS[$((DOMAIN_INDEX-1))]}
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
   
-  # 获取端口
-  show_header
-  read -p "$(echo -e "${BOLD}${CYAN}🚪 请输入端口号 [默认4000]: ${RESET}")" PORT
-  PORT=${PORT:-4000}
-  if [[ ! $PORT =~ ^[0-9]+$ ]] || [ $PORT -lt 1 ] || [ $PORT -gt 65535 ]; then
-    echo -e "${RED}无效的端口号${RESET}"
-    exit 1
-  fi
+  # 获取端口（增强验证）
+  while true; do
+    show_header
+    read -p "$(echo -e "${BOLD}${CYAN}🚪 请输入端口号 [4000-50000] [默认4000]: ${RESET}")" PORT
+    PORT=${PORT:-4000}
+    if [[ $PORT =~ ^[0-9]+$ ]] && [ $PORT -ge 4000 ] && [ $PORT -le 50000 ]; then
+      break
+    else
+      echo -e "${RED}端口号必须在4000-50000之间${RESET}"
+      sleep 2
+    fi
+  done
 
-  # 获取UUID
-  show_header
-  read -p "$(echo -e "${BOLD}${CYAN}🔑 请输入UUID [默认随机生成]: ${RESET}")" UUID
-  if [ -z "$UUID" ]; then
-    UUID=$(cat /proc/sys/kernel/random/uuid)
-    echo -e "${GREEN}✓ 已生成随机UUID: ${YELLOW}${UUID}${RESET}"
-    sleep 1
-  fi
+  # 获取UUID（增强格式验证）
+  while true; do
+    show_header
+    read -p "$(echo -e "${BOLD}${CYAN}🔑 请输入UUID [默认随机生成]: ${RESET}")" UUID
+    if [ -z "$UUID" ]; then
+      UUID=$(cat /proc/sys/kernel/random/uuid)
+      echo -e "${GREEN}✓ 已生成随机UUID: ${YELLOW}${UUID}${RESET}"
+      sleep 1
+      break
+    elif [[ $UUID =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+      break
+    else
+      echo -e "${RED}UUID格式无效，必须为UUIDv4格式${RESET}"
+      sleep 2
+    fi
+  done
 
-  # Node.js安装检测
+  # Node.js安装检测（改进安装流程）
   check_node() {
     if ! command -v node &> /dev/null; then
       show_header
       echo -e "${CYAN}▶ 安装Node.js运行环境...${RESET}"
       mkdir -p ~/.local/node
+      echo -e "${YELLOW}下载Node.js二进制包...${RESET}"
       curl -#fSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz &
       show_spinner
+      echo -e "\n${YELLOW}解压文件...${RESET}"
       tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
-      echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
-      echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
+      echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bashrc
+      echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bash_profile
       source ~/.bashrc
       source ~/.bash_profile
-      rm node.tar.gz
+      rm -f node.tar.gz
     fi
   }
 
-  # 安装流程
+  # 安装流程（分步骤显示）
   show_header
   echo -e "${CYAN}▶ 开始安装流程...${RESET}"
   
   check_node
-  echo -e "${GREEN}✓ Node.js环境就绪${RESET}"
+  echo -e "${GREEN}✓ Node.js环境就绪 (版本: $(node -v))${RESET}"
   
   echo -e "${CYAN}▶ 安装PM2进程管理器...${RESET}"
   npm install -g pm2 &> /dev/null &
   show_spinner
-  echo -e "${GREEN}✓ PM2安装完成${RESET}"
+  echo -e "${GREEN}✓ PM2安装完成 (版本: $(pm2 --version))${RESET}"
   
   mkdir -p $PROJECT_DIR
   cd $PROJECT_DIR
   
-  # 下载文件
+  # 下载文件（显示进度）
   FILES=("app.js" ".htaccess" "package.json" "ws.php")
   for file in "${FILES[@]}"; do
     echo -e "${CYAN}▶ 下载 $file...${RESET}"
     curl -#fSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
   done
   
-  # 安装依赖
+  # 安装依赖（错误捕获）
   echo -e "${CYAN}▶ 安装项目依赖...${RESET}"
-  npm install &> /dev/null &
-  show_spinner
+  if ! npm install &> npm.log; then
+    echo -e "${RED}依赖安装失败，错误日志：${RESET}"
+    cat npm.log
+    exit 1
+  fi
   
-  # 配置修改
-  sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
-  sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
-  sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
-  sed -i "s/\$PORT/$PORT/g" .htaccess
-  sed -i "s/\$PORT/$PORT/g" ws.php
+  # 配置修改（增加备份）
+  cp app.js app.js.bak
+  sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '${DOMAIN}';/" app.js
+  sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '${UUID}';/" app.js
+  sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || ${PORT};/" app.js
+  sed -i "s/\$PORT/${PORT}/g" .htaccess
+  sed -i "s/\$PORT/${PORT}/g" ws.php
   
-  # 启动服务
-  pm2 start app.js --name my-app
+  # 启动服务（错误处理）
+  echo -e "${CYAN}▶ 启动PM2服务...${RESET}"
+  if ! pm2 start app.js --name my-app; then
+    echo -e "${RED}服务启动失败，请检查日志${RESET}"
+    pm2 logs my-app
+    exit 1
+  fi
   pm2 save
   
-  # 定时任务
-  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && $HOME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
+  # 定时任务（验证存在性）
+  if ! crontab -l | grep -q 'pm2 resurrect'; then
+    (crontab -l 2>/dev/null; echo "@reboot sleep 30 && $HOME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
+  fi
   
   # 完成界面
   show_header
