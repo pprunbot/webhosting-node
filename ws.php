@@ -1,6 +1,6 @@
 <?php
 // 设置代理地址为本地 Node.js 服务
-$target = '127.0.0.1:4000';
+$target = '127.0.0.1:$PORT';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $headers = getallheaders();
