@@ -1,94 +1,88 @@
 #!/usr/bin/env bash
 set -e
 
-# 1. 检测当前 SSH 用户名
-USER_NAME=$(whoami)
-echo "Detected user: ${USER_NAME}"
+# Detect SSH username and home
+USER_NAME="$(whoami)"
+HOME_DIR="${HOME:-/home/$USER_NAME}"
+echo "Detected user: $USER_NAME"
 
-# 2. 检测域名目录
-DOMAINS=( $(ls -d /home/${USER_NAME}/domains/*/ 2>/dev/null | xargs -n1 basename) )
-if [ ${#DOMAINS[@]} -eq 0 ]; then
-  echo "Error: No domains found under /home/${USER_NAME}/domains/"
+# Domain detection
+mapfile -t DOMAINS < <(ls -d "$HOME_DIR/domains"/*/ 2>/dev/null | xargs -n1 basename)
+if (( ${#DOMAINS[@]} == 0 )); then
+  echo "No domains found under $HOME_DIR/domains"
   exit 1
-elif [ ${#DOMAINS[@]} -gt 1 ]; then
-  echo "Multiple domains detected. Please choose one:"
-  select DOMAIN in "${DOMAINS[@]}"; do
-    [ -n "$DOMAIN" ] && break
-  done
+elif (( ${#DOMAINS[@]} == 1 )); then
+  DOMAIN="${DOMAINS[0]}"
+  echo "Using domain: $DOMAIN"
 else
-  DOMAIN=${DOMAINS[0]}
+  echo "Multiple domains detected. Please choose one:"
+  for i in "${!DOMAINS[@]}"; do
+    printf "%d) %s\n" "$((i+1))" "${DOMAINS[i]}"
+  done
+  while true; do
+    read -p "#? " CHOICE < /dev/tty
+    if [[ "$CHOICE" =~ ^[0-9]+$ ]] && (( CHOICE>=1 && CHOICE<=${#DOMAINS[@]} )); then
+      DOMAIN="${DOMAINS[CHOICE-1]}"
+      break
+    fi
+    echo "Invalid choice, try again." >&2
+  done
+  echo "Selected domain: $DOMAIN"
 fi
 
-echo "Using domain: ${DOMAIN}"
+# Ask for port and UUID
+read -p "Enter port [default 4642]: " PORT < /dev/tty
+PORT="${PORT:-4642}"
+read -p "Enter UUID [default cdc72a29-c14b-4741-bd95-e2e3a8f31a56]: " UUID < /dev/tty
+UUID="${UUID:-cdc72a29-c14b-4741-bd95-e2e3a8f31a56}"
 
-# 3. 环境变量注入默认值
-DEFAULT_PORT=4642
-DEFAULT_UUID="cdc72a29-c14b-4741-bd95-e2e3a8f31a56"
-
-echo -n "请输入服务监听端口 [${DEFAULT_PORT}]: "
-read -r PORT
-PORT=${PORT:-$DEFAULT_PORT}
-
-echo -n "请输入 UUID [${DEFAULT_UUID}]: "
-read -r UUID
-UUID=${UUID:-$DEFAULT_UUID}
-
-# 4. 检测 Node.js 和 npm
-if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-  echo "Node.js and npm already installed: $(node -v), $(npm -v)"
-else
-  echo "Installing Node.js locally to ~/.local/node..."
-  mkdir -p ~/.local/node
+# Install Node.js locally if missing
+if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
+  echo "Node.js or npm not found. Installing locally..."
+  mkdir -p "$HOME_DIR/.local/node"
   curl -fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
-  tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
+  tar -xzf node.tar.gz --strip-components=1 -C "$HOME_DIR/.local/node"
   rm node.tar.gz
-  export PATH="$HOME/.local/node/bin:$PATH"
-  echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bashrc
-  echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bash_profile
-  source ~/.bashrc 2>/dev/null || true
-  source ~/.bash_profile 2>/dev/null || true
-  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-    echo "Node.js installed: $(node -v), $(npm -v)"
-  else
-    echo "Error: Node.js installation failed."
+  echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> "$HOME_DIR/.bashrc"
+  echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> "$HOME_DIR/.bash_profile"
+  source "$HOME_DIR/.bashrc" || true
+  source "$HOME_DIR/.bash_profile" || true
+  if ! command -v node >/dev/null; then
+    echo "Node.js installation failed." >&2
     exit 1
   fi
 fi
 
-# 5. 准备项目目录并下载文件
-TARGET_DIR="/home/${USER_NAME}/domains/${DOMAIN}/public_html"
-echo "Cloning app files into ${TARGET_DIR}..."
-mkdir -p "${TARGET_DIR}"
+echo "Node.js version: $(node -v)"
+echo "npm version: $(npm -v)"
+
+# Prepare target directory
+TARGET_DIR="$HOME_DIR/domains/$DOMAIN/public_html"
+mkdir -p "$TARGET_DIR"
+cd "$TARGET_DIR"
+
+# Fetch files
 BASE_RAW="https://raw.githubusercontent.com/pprunbot/webhosting-node/main"
-for FILE in app.js .htaccess package.json ws.php; do
-  curl -fsSL "${BASE_RAW}/${FILE}" -o "${TARGET_DIR}/${FILE}"
+for file in app.js .htaccess package.json ws.php; do
+  curl -fsSL "$BASE_RAW/$file" -o "$file"
 done
 
-# 6. 注入环境变量到 app.js 和 .htaccess
-echo "Updating configuration in app.js..."
+# Replace defaults in app.js
 sed -i \
-  -e "s|const DOMAIN = process.env.DOMAIN.*|const DOMAIN = process.env.DOMAIN || '${DOMAIN}';|" \
-  -e "s|const port = process.env.PORT.*|const port = process.env.PORT || ${PORT};|" \
-  -e "s|const UUID = process.env.UUID.*|const UUID = process.env.UUID || '${UUID}';|" \
-  "${TARGET_DIR}/app.js"
+  -e "s|const DOMAIN = process.env.DOMAIN.*|const DOMAIN = process.env.DOMAIN || '$DOMAIN';|" \
+  -e "s|const port = process.env.PORT.*|const port = process.env.PORT || $PORT;|" \
+  -e "s|const UUID = process.env.UUID.*|const UUID = process.env.UUID || '$UUID';|" \
+  app.js
 
-# .htaccess 中的端口替换
-sed -i "s|127.0.0.1:[0-9]\+|127.0.0.1:${PORT}|g" "${TARGET_DIR}/.htaccess"
-
-# 7. 安装 pm2 并启动服务
-echo "Installing pm2 globally..."
+# Install pm2
 npm install -g pm2
 
-echo "Starting application with pm2..."
-cd "${TARGET_DIR}"
-pm install
-pm2 start app.js --name my-app
+# Start app
+pm2 start app.js --name "webhost-$DOMAIN"
 pm2 save
 
-# 8. 配置开机自启
-CRONTAB_CMD="@reboot sleep 30 && /home/${USER_NAME}/.local/node/bin/pm2 resurrect --no-daemon"
-( crontab -l 2>/dev/null | grep -F "$CRONTAB_CMD" ) || (
-  crontab -l 2>/dev/null; echo "$CRONTAB_CMD";
-) | crontab -
+# Setup crontab for pm2 resurrect
+CRON_CMD="@reboot sleep 30 && $HOME_DIR/.local/node/bin/pm2 resurrect --no-daemon"
+( crontab -l 2>/dev/null | grep -v -F "$CRON_CMD" || true; echo "$CRON_CMD" ) | crontab -
 
-echo "Installation complete! Application is running under pm2 as 'my-app'."
+echo "Installation complete. PM2 is managing app.js under name webhost-$DOMAIN."
