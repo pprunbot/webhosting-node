@@ -49,9 +49,9 @@ show_header "WebHosting Node 管理工具"
 # 主菜单
 main_menu() {
   echo -e "${BOLD}${MAGENTA}主菜单：${RESET}"
-  echo -e "  ${GREEN}1)${RESET} 新建项目部署"
-  echo -e "  ${GREEN}2)${RESET} 卸载现有项目"
-  echo -e "  ${GREEN}3)${RESET} 退出系统"
+  echo -e "  ${GREEN}1)${RESET} vless部署"
+  echo -e "  ${GREEN}2)${RESET} 卸载"
+  echo -e "  ${GREEN}3)${RESET} 退出"
   draw_line
   read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-3]: ${RESET}")" MAIN_CHOICE
 
@@ -69,7 +69,7 @@ main_menu() {
 
 # 安装菜单
 install_menu() {
-  show_header "新建项目部署"
+  show_header "vless部署"
   
   # 检测域名目录
   DOMAINS_DIR="/home/$USERNAME/domains"
@@ -130,7 +130,7 @@ install_menu() {
 
 # 卸载菜单
 uninstall_menu() {
-  show_header "项目卸载中心"
+  show_header "卸载"
   
   # 获取已部署项目
   DOMAINS_DIR="/home/$USERNAME/domains"
