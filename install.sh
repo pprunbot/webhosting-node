@@ -2,10 +2,41 @@
 
 set -e
 
-# 检查 Node.js 和 npm
-echo "检测 Node.js 和 npm..."
-if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-  echo "未检测到 Node.js，开始安装..."
+echo "=========== WebHosting 一键安装脚本 ==========="
+
+# 自动检测用户名
+USERNAME=$(whoami)
+echo "当前系统用户: $USERNAME"
+
+# 交互输入参数
+read -p "请输入项目域名（如 dataonline.x86.dpdns.org）: " DOMAIN
+if [ -z "$DOMAIN" ]; then
+  echo "❌ 域名不能为空，退出安装。"
+  exit 1
+fi
+
+read -p "请输入监听端口（默认 4642）: " PORT
+PORT=${PORT:-4642}
+
+read -p "请输入 UUID（回车使用默认值）: " UUID
+UUID=${UUID:-cdc72a29-c14b-4741-bd95-e2e3a8f31a56}
+
+echo "使用配置:"
+echo "  ✅ 用户名: $USERNAME"
+echo "  ✅ 域名: $DOMAIN"
+echo "  ✅ 端口: $PORT"
+echo "  ✅ UUID: $UUID"
+
+echo
+read -p "确认以上信息并继续安装？(y/n): " CONFIRM
+if [[ "$CONFIRM" != "y" ]]; then
+  echo "❌ 用户取消安装。"
+  exit 1
+fi
+
+echo "=========== 检查 Node.js 和 npm ==========="
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "未检测到 Node.js 或 npm，开始安装..."
   mkdir -p ~/.local/node
   curl -fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
   tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
@@ -15,65 +46,47 @@ if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
   source ~/.bash_profile || true
 fi
 
-# 再次确认是否安装成功
-if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-  echo "Node.js 安装失败，退出脚本。"
+# 再次检查
+if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
+  echo "❌ Node.js/npm 安装失败，退出。"
   exit 1
 fi
 
-echo "Node.js 版本: $(node -v)"
-echo "npm 版本: $(npm -v)"
+echo "✅ Node.js 版本: $(node -v)"
+echo "✅ npm 版本: $(npm -v)"
 
-# 交互获取域名
-read -p "请输入你的域名（例如 dataonline.x86.dpdns.org）: " DOMAIN
-if [[ -z "$DOMAIN" ]]; then
-  echo "域名不能为空"
-  exit 1
-fi
+echo "=========== 下载项目文件 ==========="
+TARGET_DIR=~/domains/${DOMAIN}/public_html
+mkdir -p "$TARGET_DIR"
+cd "$TARGET_DIR"
 
-# 交互获取监听端口
-read -p "请输入监听端口（默认 4642）: " PORT
-PORT=${PORT:-4642}
+# 下载四个核心文件
+curl -fsSLO https://raw.githubusercontent.com/pprunbot/webhosting-node/main/app.js
+curl -fsSLO https://raw.githubusercontent.com/pprunbot/webhosting-node/main/.htaccess
+curl -fsSLO https://raw.githubusercontent.com/pprunbot/webhosting-node/main/ws.php
+curl -fsSLO https://raw.githubusercontent.com/pprunbot/webhosting-node/main/package.json
 
-# 交互获取 UUID
-read -p "请输入 UUID（默认: cdc72a29-c14b-4741-bd95-e2e3a8f31a56）: " UUID
-UUID=${UUID:-cdc72a29-c14b-4741-bd95-e2e3a8f31a56}
+echo "✅ 文件下载完成"
 
-# 获取 SSH 用户名
-USERNAME=$(whoami)
-APP_DIR=~/domains/${DOMAIN}/public_html
+echo "=========== 替换 app.js 中的端口、UUID 和域名 ==========="
+# 替换端口
+sed -i "s/const port = process.env.PORT || [0-9]\+;/const port = process.env.PORT || $PORT;/" app.js
 
-# 创建路径
-mkdir -p "$APP_DIR"
-cd "$APP_DIR"
+# 替换 UUID（注意保留引号）
+sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
 
-# 下载四个文件
-echo "正在下载 app.js, .htaccess, ws.php, package.json..."
-curl -O https://raw.githubusercontent.com/pprunbot/webhosting-node/main/app.js
-curl -O https://raw.githubusercontent.com/pprunbot/webhosting-node/main/.htaccess
-curl -O https://raw.githubusercontent.com/pprunbot/webhosting-node/main/ws.php
-curl -O https://raw.githubusercontent.com/pprunbot/webhosting-node/main/package.json
+# 替换域名
+sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
 
-# 替换端口与 UUID
-echo "正在配置 app.js..."
-
-sed -i "s/process.env.PORT || [0-9]\+/process.env.PORT || $PORT/" app.js
-sed -i "s|process.env.UUID || '.*'|process.env.UUID || '$UUID'|" app.js
-sed -i "s|process.env.DOMAIN || '.*'|process.env.DOMAIN || '$DOMAIN'|" app.js
-
-# 安装 PM2
-echo "正在安装 PM2..."
+echo "=========== 安装依赖 & 启动服务 ==========="
 npm install -g pm2
+npm install
 
-# 启动应用
-echo "启动 PM2 应用..."
 pm2 start app.js --name my-app
 pm2 save
 
-# 设置 pm2 自动重启
-echo "配置 Crontab..."
+echo "=========== 设置开机启动 ==========="
 CRON_CMD="@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon"
-(crontab -l 2>/dev/null | grep -v -F "$CRON_CMD" || true; echo "$CRON_CMD") | crontab -
+( crontab -l 2>/dev/null | grep -v 'pm2 resurrect' ; echo "$CRON_CMD" ) | crontab -
 
-echo "✅ 安装完成！"
-echo "PM2 应用已启动，监听端口：$PORT"
+echo "🎉 安装完成！服务已启动，pm2 名称为 my-app"
