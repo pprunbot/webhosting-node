@@ -106,7 +106,19 @@ for file in "${FILES[@]}"; do
   curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
 done
 
-# 项目依赖安装（核心）
+# 修改配置文件
+echo "正在配置端口和参数..."
+sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
+sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
+sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
+
+# 修改.htaccess端口
+sed -i "s/127.0.0.1:4000/127.0.0.1:$PORT/g" .htaccess
+
+# 修改ws.php端口
+sed -i "s/\$target = '127.0.0.1:4000';/\$target = '127.0.0.1:$PORT';/g" ws.php
+
+# 项目依赖安装
 echo "正在安装项目依赖..."
 npm install
 
@@ -115,14 +127,6 @@ if [ $? -ne 0 ]; then
   echo "错误：npm依赖安装失败，请检查网络连接和package.json配置"
   exit 1
 fi
-
-# 修改配置文件
-sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
-sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
-sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
-
-# 安装依赖
-npm install
 
 # 启动PM2服务
 pm2 start app.js --name my-app
