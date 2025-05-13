@@ -115,7 +115,7 @@ sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || 
 npm install
 
 # 启动PM2服务
-pm2 start app.js --name my-app
+pm2 start app.js --name my-appcs
 pm2 save
 
 # 添加定时任务
