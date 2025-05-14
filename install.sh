@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash  
 
 # 退出脚本执行错误
 set -e
@@ -106,7 +106,7 @@ modify_config_menu() {
   fi
 
   SELECTED_DOMAIN=${INSTALLED_APPS[$((APP_INDEX-1))]}
-  APP_DIR="/home/$USERNAME/domains/$SELECTED_DOMAIN/public_html"
+  APP_DIR="$DOMAINS_DIR/$SELECTED_DOMAIN/public_html"
   
   # 配置类型选择
   echo -e "\n${BOLD}${BLUE}选择要修改的配置类型:${RESET}"
@@ -125,18 +125,10 @@ modify_config_menu() {
   esac
 }
 
-# 修改vless参数
+# 修改vless参数（已修正 .htaccess 与 ws.php 的端口替换）
 modify_vless() {
   show_header "修改vless参数"
   cd "$APP_DIR"
-
-  # —— 先重新下载最新项目文件，以同步修改逻辑 —— 
-  echo -e "${BLUE}▶ 正在重新下载项目文件以同步最新代码...${RESET}"
-  FILES=("app.js" ".htaccess" "package.json" "ws.php")
-  for file in "${FILES[@]}"; do
-    echo -e "${CYAN}   下载 $file ...${RESET}"
-    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
-  done
 
   # 获取当前配置
   CURRENT_PORT=$(grep -oP "const port = process.env.PORT || \K\d+" app.js)
@@ -156,9 +148,11 @@ modify_vless() {
       echo -e "${RED}无效的端口号!${RESET}"
       return 1
     fi
+
+    # 修改 app.js
     sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $NEW_PORT;/" app.js
-    sed -i "s/Listen $CURRENT_PORT/Listen $NEW_PORT/g" .htaccess
-    sed -i "s/127.0.0.1:$CURRENT_PORT/127.0.0.1:$NEW_PORT/g" ws.php
+    # 同步修改 .htaccess 和 ws.php 中的 127.0.0.1:旧端口
+    sed -i "s/127\.0\.0\.1:$CURRENT_PORT/127.0.0.1:$NEW_PORT/g" .htaccess ws.php
   fi
 
   if [[ -n "$NEW_UUID" ]]; then
@@ -196,8 +190,8 @@ modify_nezha() {
 
   # 应用修改
   [[ -n "$NEW_NEZHA_SERVER" ]] && sed -i "s/const NEZHA_SERVER = process.env.NEZHA_SERVER || '.*';/const NEZHA_SERVER = process.env.NEZHA_SERVER || '${NEW_NEZHA_SERVER}';/" app.js
-  [[ -n "$NEW_NEZHA_PORT" ]] && sed -i "s/const NEZHA_PORT = process.env.NEZHA_PORT || '.*';/const NEZHA_PORT = process.env.NEZHA_PORT || '${NEW_NEZHA_PORT}';/" app.js
-  [[ -n "$NEW_NEZHA_KEY" ]] && sed -i "s/const NEZHA_KEY = process.env.NEZHA_KEY || '.*';/const NEZHA_KEY = process.env.NEZHA_KEY || '${NEW_NEZHA_KEY}';/" app.js
+  [[ -n "$NEW_NEZHA_PORT" ]]   && sed -i "s/const NEZHA_PORT   = process.env.NEZHA_PORT   || '.*';/const NEZHA_PORT   = process.env.NEZHA_PORT   || '${NEW_NEZHA_PORT}';/"   app.js
+  [[ -n "$NEW_NEZHA_KEY" ]]    && sed -i "s/const NEZHA_KEY    = process.env.NEZHA_KEY    || '.*';/const NEZHA_KEY    = process.env.NEZHA_KEY    || '${NEW_NEZHA_KEY}';/"    app.js
 
   # 重启服务并保存
   pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
@@ -243,7 +237,7 @@ install_nezha() {
   fi
 
   SELECTED_DOMAIN=${INSTALLED_APPS[$((APP_INDEX-1))]}
-  APP_DIR="/home/$USERNAME/domains/$SELECTED_DOMAIN/public_html"
+  APP_DIR="$DOMAINS_DIR/$SELECTED_DOMAIN/public_html"
   cd "$APP_DIR"
 
   # 获取哪吒配置参数
