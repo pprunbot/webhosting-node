@@ -189,9 +189,9 @@ modify_nezha() {
   read -p "$(echo -e "${BOLD}${CYAN}哪吒通信密钥 [留空保持当前]: ${RESET}")" NEW_NEZHA_KEY
 
   # 应用修改
-  [[ -n "$NEW_NEZHA_SERVER" ]] && sed -i "s/const NEZHA_SERVER = process.env.NEZHA_SERVER || '.*';/const NEZHA_SERVER = process.env.NEZHA_SERVER || '${NEW_NEZHA_SERVER}';/" app.js
-  [[ -n "$NEW_NEZHA_PORT" ]]   && sed -i "s/const NEZHA_PORT = process.env.NEZHA_PORT || '.*';/const NEZHA_PORT = process.env.NEZHA_PORT || '${NEW_NEZHA_PORT}';/"   app.js
-  [[ -n "$NEW_NEZHA_KEY" ]]    && sed -i "s/const NEZHA_KEY = process.env.NEZHA_KEY || '.*';/const NEZHA_KEY = process.env.NEZHA_KEY || '${NEW_NEZHA_KEY}';/"    app.js
+  [[ -n "$NEW_NEZHA_SERVER" ]] && sed -i "s|const NEZHA_SERVER = process.env.NEZHA_SERVER || '.*';|const NEZHA_SERVER = process.env.NEZHA_SERVER || '${NEW_NEZHA_SERVER}';|" app.js
+  [[ -n "$NEW_NEZHA_PORT" ]]   && sed -i "s|const NEZHA_PORT = process.env.NEZHA_PORT || '.*';|const NEZHA_PORT = process.env.NEZHA_PORT || '${NEW_NEZHA_PORT}';|"   app.js
+  [[ -n "$NEW_NEZHA_KEY" ]]    && sed -i "s|const NEZHA_KEY = process.env.NEZHA_KEY || '.*';|const NEZHA_KEY = process.env.NEZHA_KEY || '${NEW_NEZHA_KEY}';|"    app.js
 
   # 重启服务并保存
   pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
