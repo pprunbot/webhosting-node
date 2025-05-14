@@ -148,7 +148,9 @@ modify_vless() {
       echo -e "${RED}无效的端口号!${RESET}"
       return 1
     fi
+    # 更新 app.js 中的端口
     sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $NEW_PORT;/" app.js
+    # 同步更新 .htaccess 和 ws.php
     sed -i "s/Listen $CURRENT_PORT/Listen $NEW_PORT/g" .htaccess
     sed -i "s/127.0.0.1:$CURRENT_PORT/127.0.0.1:$NEW_PORT/g" ws.php
   fi
@@ -187,9 +189,9 @@ modify_nezha() {
   read -p "$(echo -e "${BOLD}${CYAN}哪吒通信密钥 [留空保持当前]: ${RESET}")" NEW_NEZHA_KEY
 
   # 应用修改
-  [[ -n "$NEW_NEZHA_SERVER" ]] && sed -i "s/const NEZHA_SERVER = process.env.NEZHA_SERVER || '.*';/const NEZHA_SERVER = process.env.NEZHA_SERVER || '${NEW_NEZHA_SERVER}';/" app.js
-  [[ -n "$NEW_NEZHA_PORT" ]] && sed -i "s/const NEZHA_PORT = process.env.NEZHA_PORT || '.*';/const NEZHA_PORT = process.env.NEZHA_PORT || '${NEW_NEZHA_PORT}';/" app.js
-  [[ -n "$NEW_NEZHA_KEY" ]] && sed -i "s/const NEZHA_KEY = process.env.NEZHA_KEY || '.*';/const NEZHA_KEY = process.env.NEZHA_KEY || '${NEW_NEZHA_KEY}';/" app.js
+  [[ -n "$NEW_NEZHA_SERVER" ]] && sed -i "s|const NEZHA_SERVER = process.env.NEZHA_SERVER || '.*';|const NEZHA_SERVER = process.env.NEZHA_SERVER || '${NEW_NEZHA_SERVER}';|" app.js
+  [[ -n "$NEW_NEZHA_PORT" ]]   && sed -i "s|const NEZHA_PORT    = process.env.NEZHA_PORT    || '.*';|const NEZHA_PORT    = process.env.NEZHA_PORT    || '${NEW_NEZHA_PORT}';|" app.js
+  [[ -n "$NEW_NEZHA_KEY" ]]    && sed -i "s|const NEZHA_KEY     = process.env.NEZHA_KEY     || '.*';|const NEZHA_KEY     = process.env.NEZHA_KEY     || '${NEW_NEZHA_KEY}';|" app.js
 
   # 重启服务并保存
   pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
@@ -446,8 +448,8 @@ start_installation() {
     sed -i "/const port/a \\
 
 const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
-const NEZHA_PORT = process.env.NEZHA_PORT || '443';\\
-const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
+const NEZHA_PORT    = process.env.NEZHA_PORT    || '443';\\
+const NEZHA_KEY     = process.env.NEZHA_KEY     || '';\\
 " app.js
   fi
 
