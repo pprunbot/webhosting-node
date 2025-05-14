@@ -40,216 +40,165 @@ show_header() {
   echo -e "${CYAN}项目地址: ${YELLOW}${PROJECT_URL}${RESET}\n"
 }
 
-# 获取当前用户名
-USERNAME=$(whoami)
+# 列出已部署域名
+domains_list() {
+  DOMAINS_DIR="/home/$USERNAME/domains"
+  INSTALLED=()
+  for d in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
+    [ -d "$DOMAINS_DIR/$d/public_html" ] && INSTALLED+=("$d")
+  done
+  if [ ${#INSTALLED[@]} -eq 0 ]; then
+    echo -e "${YELLOW}未找到部署项目${RESET}"
+    sleep 1
+    main_menu
+    exit 0
+  fi
+}
 
-# 初始界面
-show_header "WebHosting Node 管理工具"
-
-# 主菜单
-main_menu() {
-  echo -e "${BOLD}${MAGENTA}主菜单：${RESET}"
-  echo -e "  ${GREEN}1)${RESET} vless部署"
-  echo -e "  ${GREEN}2)${RESET} 卸载"
-  echo -e "  ${GREEN}3)${RESET} 安装哪吒监控"
-  echo -e "  ${GREEN}4)${RESET} 退出"
-  draw_line
-  read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-4]: ${RESET}")" MAIN_CHOICE
-
-  case $MAIN_CHOICE in
-    1) install_menu ;;
-    2) uninstall_menu ;;
-    3) install_nezha ;;
-    4) exit 0 ;;
-    *) 
-      echo -e "${RED}无效选项，请重新选择${RESET}"
-      sleep 1
-      main_menu
-      ;;
-  esac
+# 选择域名
+select_domain() {
+  echo -e "${BOLD}${BLUE}可选域名：${RESET}"
+  for i in "${!INSTALLED[@]}"; do
+    printf "  ${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${INSTALLED[$i]}"
+  done
+  read -p "$(echo -e "${BOLD}${CYAN}请选择 [1-${#INSTALLED[@]}]: ${RESET}")" DI
+  if [[ ! $DI =~ ^[0-9]+$ ]] || [ $DI -lt 1 ] || [ $DI -gt ${#INSTALLED[@]} ]; then
+    echo -e "${RED}无效选择${RESET}"
+    sleep 1
+    main_menu
+    exit 0
+  fi
+  SELECTED_DOMAIN=${INSTALLED[$((DI-1))]}
 }
 
 # 安装哪吒监控
 install_nezha() {
-  show_header "哪吒监控配置"
-
-  # 查找所有部署的应用
-  DOMAINS_DIR="/home/$USERNAME/domains"
-  INSTALLED_APPS=()
-  for domain in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
-    if [ -f "$DOMAINS_DIR/$domain/public_html/app.js" ]; then
-      INSTALLED_APPS+=("$domain")
-    fi
-  done
-
-  if [ ${#INSTALLED_APPS[@]} -eq 0 ]; then
-    echo -e "${RED}未找到已部署的应用，请先执行vless部署!${RESET}"
-    sleep 2
-    main_menu
-    return
-  fi
-
-  # 显示应用选择菜单
-  echo -e "${BOLD}${BLUE}选择要配置的应用:${RESET}"
-  for i in "${!INSTALLED_APPS[@]}"; do
-    printf "${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${INSTALLED_APPS[$i]}"
-  done
-
-  read -p "$(echo -e "${BOLD}${CYAN}请输入数字选择 [1-${#INSTALLED_APPS[@]}]: ${RESET}")" APP_INDEX
-  if [[ ! $APP_INDEX =~ ^[0-9]+$ ]] || [ $APP_INDEX -lt 1 ] || [ $APP_INDEX -gt ${#INSTALLED_APPS[@]} ]; then
-    echo -e "${RED}无效的选择!${RESET}"
-    sleep 1
-    main_menu
-    return
-  fi
-
-  SELECTED_DOMAIN=${INSTALLED_APPS[$((APP_INDEX-1))]}
-  APP_DIR="$DOMAINS_DIR/$SELECTED_DOMAIN/public_html"
+  show_header
+  domains_list
+  select_domain
+  APP_DIR="/home/$USERNAME/domains/$SELECTED_DOMAIN/public_html"
   cd "$APP_DIR"
 
-  # 获取哪吒配置参数
-  echo -e "\n${BOLD}${CYAN}请输入哪吒监控配置 (全部填写才生效):${RESET}"
+  echo -e "\n${BOLD}${CYAN}请输入哪吒监控配置 (必填):${RESET}"
   read -p "$(echo -e "  ${CYAN}哪吒服务器地址 [默认 nezha.gvkoyeb.eu.org]: ${RESET}")" NEZHA_SERVER
   NEZHA_SERVER=${NEZHA_SERVER:-nezha.gvkoyeb.eu.org}
   read -p "$(echo -e "  ${CYAN}哪吒服务器端口 [默认 443]: ${RESET}")" NEZHA_PORT
   NEZHA_PORT=${NEZHA_PORT:-443}
-  read -p "$(echo -e "  ${CYAN}哪吒通信密钥 (必填): ${RESET}")" NEZHA_KEY
+  read -p "$(echo -e "  ${CYAN}哪吒通信密钥: ${RESET}")" NEZHA_KEY
 
-  # 验证参数
-  if [[ -z "$NEZHA_SERVER" || -z "$NEZHA_PORT" || -z "$NEZHA_KEY" ]]; then
-    echo -e "${RED}错误：必须填写所有参数才能启用哪吒监控!${RESET}"
+  if [[ -z "$NEZHA_KEY" ]]; then
+    echo -e "${RED}错误：通信密钥不能为空!${RESET}"
     sleep 2
     main_menu
-    return
+    exit 0
   fi
 
-  # 修改app.js配置
   sed -i "s|const NEZHA_SERVER = process.env.NEZHA_SERVER || '.*';|const NEZHA_SERVER = process.env.NEZHA_SERVER || '${NEZHA_SERVER}';|" app.js
   sed -i "s|const NEZHA_PORT = process.env.NEZHA_PORT || '.*';|const NEZHA_PORT = process.env.NEZHA_PORT || '${NEZHA_PORT}';|" app.js
   sed -i "s|const NEZHA_KEY = process.env.NEZHA_KEY || '.*';|const NEZHA_KEY = process.env.NEZHA_KEY || '${NEZHA_KEY}';|" app.js
 
-  # 重启服务
-  echo -e "${BLUE}正在重启应用服务...${RESET}"
+  echo -e "${BLUE}正在重启服务...${RESET}"
   pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
-  echo -e "${GREEN}✓ 哪吒监控已成功启用!${RESET}"
+  echo -e "${GREEN}✓ 哪吒监控已启用!${RESET}"
   sleep 2
   main_menu
 }
 
-# 安装菜单
+# 修改配置（vless 或 哪吒）
+modify_config() {
+  show_header
+  domains_list
+  select_domain
+  APP_DIR="/home/$USERNAME/domains/$SELECTED_DOMAIN/public_html"
+  cd "$APP_DIR"
+
+  echo -e "\n${BOLD}${BLUE}选择要修改的配置类型:${RESET}"
+  echo -e "  ${GREEN}1)${RESET} vless 参数"
+  echo -e "  ${GREEN}2)${RESET} 哪吒 参数"
+  echo -e "  ${GREEN}3)${RESET} 返回主菜单"
+  read -p "$(echo -e "${BOLD}${CYAN}请输入 [1-3]: ${RESET}")" CFG_CHOICE
+
+  case $CFG_CHOICE in
+    1)
+      read -p "$(echo -e "  ${CYAN}新的端口号 (留空保持不变): ${RESET}")" NEW_PORT
+      read -p "$(echo -e "  ${CYAN}新的 UUID (留空保持不变): ${RESET}")" NEW_UUID
+      if [[ -n "$NEW_PORT" ]]; then
+        if [[ ! $NEW_PORT =~ ^[0-9]+$ ]] || [ $NEW_PORT -lt 1 ] || [ $NEW_PORT -gt 65535 ]; then
+          echo -e "${RED}无效端口号${RESET}"; sleep 1; main_menu; fi
+        sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || ${NEW_PORT};/" app.js
+        sed -i "s/\\$PORT/${NEW_PORT}/g" .htaccess ws.php
+      fi
+      if [[ -n "$NEW_UUID" ]]; then
+        sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '${NEW_UUID}';/" app.js
+      fi
+      echo -e "${GREEN}vless 参数更新完成!${RESET}"
+      pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
+      ;;
+    2)
+      echo -e "\n${BOLD}${CYAN}输入新的哪吒配置 (留空保持不变):${RESET}"
+      read -p "$(echo -e "  ${CYAN}服务器地址: ${RESET}")" NEW_NS
+      read -p "$(echo -e "  ${CYAN}服务器端口: ${RESET}")" NEW_NP
+      read -p "$(echo -e "  ${CYAN}通信密钥: ${RESET}")" NEW_NK
+      [[ -n "$NEW_NS" ]] && sed -i "s|const NEZHA_SERVER = process.env.NEZHA_SERVER || '.*';|const NEZHA_SERVER = process.env.NEZHA_SERVER || '${NEW_NS}';|" app.js
+      [[ -n "$NEW_NP" ]] && sed -i "s|const NEZHA_PORT = process.env.NEZHA_PORT || '.*';|const NEZHA_PORT = process.env.NEZHA_PORT || '${NEW_NP}';|" app.js
+      [[ -n "$NEW_NK" ]] && sed -i "s|const NEZHA_KEY = process.env.NEZHA_KEY || '.*';|const NEZHA_KEY = process.env.NEZHA_KEY || '${NEW_NK}';|" app.js
+      echo -e "${GREEN}哪吒 参数更新完成!${RESET}"
+      pm2.restart "my-app-${SELECTED_DOMAIN}" --silent
+      ;;
+    *) main_menu ;;  
+  esac
+
+  sleep 1
+  main_menu
+}
+
+# vless 部署菜单
 install_menu() {
-  show_header "vless部署"
-  
-  # 检测域名目录
+  show_header
+  echo -e "${BOLD}${BLUE}vless 部署${RESET}"
+
   DOMAINS_DIR="/home/$USERNAME/domains"
-  if [ ! -d "$DOMAINS_DIR" ]; then
-    echo -e "${RED}错误：未找到域名目录 ${DOMAINS_DIR}${RESET}"
-    exit 1
-  fi
+  [ ! -d "$DOMAINS_DIR" ] && echo -e "${RED}未找到目录 $DOMAINS_DIR${RESET}" && exit 1
+  DOMAINS=( $(ls -d $DOMAINS_DIR/*/ | xargs -n1 basename) )
+  [ ${#DOMAINS[@]} -eq 0 ] && echo -e "${RED}未找到域名配置${RESET}" && exit 1
 
-  # 获取可用域名列表
-  DOMAINS=($(ls -d $DOMAINS_DIR/*/ | xargs -n1 basename))
-  if [ ${#DOMAINS[@]} -eq 0 ]; then
-    echo -e "${RED}错误：未找到任何域名配置${RESET}"
-    exit 1
-  fi
+  for i in "${!DOMAINS[@]}"; do printf "  ${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${DOMAINS[$i]}"; done
+  read -p "$(echo -e "${BOLD}${CYAN}选择域名 [默认1]: ${RESET}")" IDX
+  IDX=${IDX:-1}
+  if [[ ! $IDX =~ ^[0-9]+$ ]] || [ $IDX -lt 1 ] || [ $IDX -gt ${#DOMAINS[@]} ]; then echo -e "${RED}无效选择${RESET}"; exit 1; fi
+  DOMAIN=${DOMAINS[$((IDX-1))]}
 
-  # 显示域名选择菜单
-  echo -e "${BOLD}${BLUE}可用域名列表：${RESET}"
-  for i in "${!DOMAINS[@]}"; do
-    printf "${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${DOMAINS[$i]}"
-  done
-
-  # 获取用户选择的域名
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请选择域名（输入数字）[默认1]: ${RESET}")" DOMAIN_INDEX
-  DOMAIN_INDEX=${DOMAIN_INDEX:-1}
-  if [[ ! $DOMAIN_INDEX =~ ^[0-9]+$ ]] || [ $DOMAIN_INDEX -lt 1 ] || [ $DOMAIN_INDEX -gt ${#DOMAINS[@]} ]; then
-    echo -e "${RED}无效的选择${RESET}"
-    exit 1
-  fi
-
-  DOMAIN=${DOMAINS[$((DOMAIN_INDEX-1))]}
-  echo -e "\n${GREEN}✓ 已选择域名: ${YELLOW}${DOMAIN}${RESET}"
-
-  # 自定义端口输入
   draw_line
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请输入端口号 [默认4000]: ${RESET}")" PORT
+  read -p "$(echo -e "${BOLD}${CYAN}端口号 [默认4000]: ${RESET}")" PORT
   PORT=${PORT:-4000}
+  if [[ ! $PORT =~ ^[0-9]+$ ]] || [ $PORT -lt 1 ] || [ $PORT -gt 65535 ]; then echo -e "${RED}无效端口${RESET}"; exit 1; fi
 
-  # 验证端口号
-  if [[ ! $PORT =~ ^[0-9]+$ ]] || [ $PORT -lt 1 ] || [ $PORT -gt 65535 ]; then
-    echo -e "${RED}无效的端口号${RESET}"
-    exit 1
-  fi
-
-  # UUID输入
   draw_line
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请输入UUID [默认随机生成]: ${RESET}")" UUID
+  read -p "$(echo -e "${BOLD}${CYAN}UUID [默认自动生成]: ${RESET}")" UUID
   if [ -z "$UUID" ]; then
     UUID=$(cat /proc/sys/kernel/random/uuid)
-    echo -e "${GREEN}✓ 已生成随机UUID: ${YELLOW}${UUID}${RESET}"
+    echo -e "${GREEN}已生成UUID: ${YELLOW}${UUID}${RESET}"
   fi
 
-  # 开始部署流程
   start_installation
 }
 
 # 卸载菜单
 uninstall_menu() {
-  show_header "卸载"
-  
-  # 获取已部署项目
-  DOMAINS_DIR="/home/$USERNAME/domains"
-  INSTALLED=()
-  for domain in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
-    if [ -d "$DOMAINS_DIR/$domain/public_html" ]; then
-      INSTALLED+=("$domain")
-    fi
-  done
+  show_header
+  echo -e "${BOLD}${RED}卸载${RESET}"
+  domains_list
+  select_domain
+  read -p "$(echo -e "${BOLD}${RED}确认卸载 ${SELECTED_DOMAIN}? [y/N]: ${RESET}")" CONF
+  if [[ ! $CONF =~ ^[Yy]$ ]]; then echo -e "${YELLOW}已取消${RESET}"; sleep 1; main_menu; fi
 
-  if [ ${#INSTALLED[@]} -eq 0 ]; then
-    echo -e "${YELLOW}没有找到可卸载的项目${RESET}"
-    sleep 2
-    main_menu
-    return
-  fi
-
-  echo -e "${BOLD}${RED}⚠ 警告：这将永久删除项目数据！${RESET}\n"
-  echo -e "${BOLD}${BLUE}已部署项目列表：${RESET}"
-  for i in "${!INSTALLED[@]}"; do
-    printf "${RED}%2d)${RESET} %s\n" "$((i+1))" "${INSTALLED[$i]}"
-  done
-
-  echo ""
-  read -p "$(echo -e "${BOLD}${CYAN}请选择要卸载的项目 [1-${#INSTALLED[@]}]: ${RESET}")" UNINSTALL_INDEX
-  if [[ ! $UNINSTALL_INDEX =~ ^[0-9]+$ ]] || [ $UNINSTALL_INDEX -lt 1 ] || [ $UNINSTALL_INDEX -gt ${#INSTALLED[@]} ]; then
-    echo -e "${RED}无效的选择${RESET}"
-    exit 1
-  fi
-
-  SELECTED_DOMAIN=${INSTALLED[$((UNINSTALL_INDEX-1))]}
-  
-  # 确认操作
-  read -p "$(echo -e "${BOLD}${RED}确认要卸载 ${SELECTED_DOMAIN} 吗？[y/N]: ${RESET}")" CONFIRM
-  if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
-    echo -e "${YELLOW}已取消卸载操作${RESET}"
-    exit 0
-  fi
-
-  # 执行卸载
-  echo -e "\n${BLUE}正在停止PM2服务...${RESET}"
-  pm2 stop "my-app-${SELECTED_DOMAIN}" || true
-  pm2 delete "my-app-${SELECTED_DOMAIN}" || true
+  echo -e "\n${BLUE}停止PM2服务...${RESET}"
+  pm2 delete "my-app-${SELECTED_DOMAIN}" --silent || true
   pm2 save
-
-  echo -e "${BLUE}正在清理项目文件...${RESET}"
-  rm -rf "${DOMAINS_DIR}/${SELECTED_DOMAIN}/public_html"
-
-  echo -e "\n${GREEN}✓ ${SELECTED_DOMAIN} 已成功卸载${RESET}"
-  sleep 2
+  echo -e "${BLUE}清理文件...${RESET}"
+  rm -rf "/home/$USERNAME/domains/$SELECTED_DOMAIN/public_html"
+  echo -e "\n${GREEN}✓ 卸载成功!${RESET}"
+  sleep 1
   main_menu
 }
 
@@ -257,22 +206,17 @@ uninstall_menu() {
 check_node() {
   if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
     echo -e "\n${BLUE}正在安装Node.js...${RESET}"
-    
     mkdir -p ~/.local/node
-    echo -e "${CYAN}▶ 下载Node.js运行环境...${RESET}"
     curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
-    echo -e "\n${CYAN}▶ 解压文件...${RESET}"
     tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
-    echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
     echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
     echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
     source ~/.bashrc
     source ~/.bash_profile
     rm node.tar.gz
   fi
-
-  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
+  if ! command -v node &> /dev/null; then
+    echo -e "${RED}Node.js 安装失败，请手动安装后重试${RESET}"
     exit 1
   fi
 }
@@ -280,59 +224,56 @@ check_node() {
 # 安装流程
 start_installation() {
   check_node
-  echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
+  echo -e "\n${BLUE}正在安装PM2...${RESET}"
   npm install -g pm2
 
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
-  mkdir -p $PROJECT_DIR
-  cd $PROJECT_DIR
+  mkdir -p "$PROJECT_DIR" && cd "$PROJECT_DIR"
 
   echo -e "\n${BLUE}正在下载项目文件...${RESET}"
   FILES=("app.js" ".htaccess" "package.json" "ws.php")
-  for file in "${FILES[@]}"; do
-    echo -e "${CYAN}▶ 下载 $file...${RESET}"
-    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
+  for f in "${FILES[@]}"; do
+    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$f -O
   done
 
-  echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
+  echo -e "\n${BLUE}正在安装依赖...${RESET}"
   npm install
-  if [ $? -ne 0 ]; then
-    echo -e "${RED}错误：npm依赖安装失败，请检查网络连接和package.json配置${RESET}"
-    exit 1
-  fi
 
-  echo -e "\n${BLUE}正在配置应用参数...${RESET}"
+  echo -e "\n${BLUE}配置应用参数...${RESET}"
   sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
   sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
   sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
-  sed -i "s/\$PORT/$PORT/g" .htaccess
-  sed -i "s/\$PORT/$PORT/g" ws.php
+  sed -i "s/\\$PORT/$PORT/g" .htaccess ws.php
 
-  # 添加哪吒监控变量（默认值）
+  # 初始化哪吒监控默认配置
   if ! grep -q "NEZHA_SERVER" app.js; then
-    sed -i "/const port/a \\
-const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
+    sed -i "/const port/a \\const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
 const NEZHA_PORT = process.env.NEZHA_PORT || '443';\\
-const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
-" app.js
+const NEZHA_KEY = process.env.NEZHA_KEY || '';" app.js
   fi
 
-  echo -e "\n${BLUE}正在启动PM2服务...${RESET}"
+  echo -e "\n${BLUE}启动PM2服务...${RESET}"
   pm2 start app.js --name "my-app-${DOMAIN}"
   pm2 save
 
-  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
+  # 开机自启
+  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && $HOME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
 
   draw_line
   echo -e "${GREEN}${BOLD}部署成功！${RESET}"
-  echo -e "${CYAN}访问地址\t: ${YELLOW}https://${DOMAIN}${RESET}"
-  echo -e "${CYAN}UUID\t\t: ${YELLOW}${UUID}${RESET}"
-  echo -e "${CYAN}端口号\t\t: ${YELLOW}${PORT}${RESET}"
-  echo -e "${CYAN}项目目录\t: ${YELLOW}${PROJECT_DIR}${RESET}"
-  echo -e "${CYAN}GitHub仓库\t: ${YELLOW}${PROJECT_URL}${RESET}"
+  echo -e "${CYAN}访问地址	: ${YELLOW}https://${DOMAIN}${RESET}"
+  echo -e "${CYAN}UUID		: ${YELLOW}${UUID}${RESET}"
+  echo -e "${CYAN}端口号		: ${YELLOW}${PORT}${RESET}"
+  echo -e "${CYAN}项目目录	: ${YELLOW}${PROJECT_DIR}${RESET}"
+  echo -e "${CYAN}GitHub 仓库	: ${YELLOW}${PROJECT_URL}${RESET}"
   draw_line
   echo ""
+  sleep 2
+  main_menu
 }
+
+# 获取当前用户名
+USERNAME=$(whoami)
 
 # 启动主菜单
 main_menu
