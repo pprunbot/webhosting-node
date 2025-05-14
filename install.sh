@@ -51,155 +51,22 @@ main_menu() {
   echo -e "${BOLD}${MAGENTA}主菜单：${RESET}"
   echo -e "  ${GREEN}1)${RESET} vless部署"
   echo -e "  ${GREEN}2)${RESET} 安装哪吒监控"
-  echo -e "  ${GREEN}3)${RESET} 修改配置"
-  echo -e "  ${GREEN}4)${RESET} 卸载"
-  echo -e "  ${GREEN}5)${RESET} 退出"
+  echo -e "  ${GREEN}3)${RESET} 卸载"
+  echo -e "  ${GREEN}4)${RESET} 退出"
   draw_line
-  read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-5]: ${RESET}")" MAIN_CHOICE
+  read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-4]: ${RESET}")" MAIN_CHOICE
 
   case $MAIN_CHOICE in
     1) install_menu ;;
     2) install_nezha ;;
-    3) modify_config_menu ;;
-    4) uninstall_menu ;;
-    5) exit 0 ;;
-    *)
+    3) uninstall_menu ;;
+    4) exit 0 ;;
+    *) 
       echo -e "${RED}无效选项，请重新选择${RESET}"
       sleep 1
       main_menu
       ;;
   esac
-}
-
-# 修改配置菜单
-modify_config_menu() {
-  show_header "修改配置"
-
-  # 查找所有部署的应用
-  DOMAINS_DIR="/home/$USERNAME/domains"
-  INSTALLED_APPS=()
-  for domain in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
-    if [ -f "$DOMAINS_DIR/$domain/public_html/app.js" ]; then
-      INSTALLED_APPS+=("$domain")
-    fi
-  done
-
-  if [ ${#INSTALLED_APPS[@]} -eq 0 ]; then
-    echo -e "${RED}未找到已部署的应用，请先执行vless部署!${RESET}"
-    sleep 2
-    main_menu
-    return
-  fi
-
-  # 显示应用选择菜单
-  echo -e "${BOLD}${BLUE}选择要修改的应用:${RESET}"
-  for i in "${!INSTALLED_APPS[@]}"; do
-    printf "${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${INSTALLED_APPS[$i]}"
-  done
-
-  read -p "$(echo -e "${BOLD}${CYAN}请输入数字选择 [1-${#INSTALLED_APPS[@]}]: ${RESET}")" APP_INDEX
-  if [[ ! $APP_INDEX =~ ^[0-9]+$ ]] || [ $APP_INDEX -lt 1 ] || [ $APP_INDEX -gt ${#INSTALLED_APPS[@]} ]; then
-    echo -e "${RED}无效的选择!${RESET}"
-    sleep 1
-    main_menu
-    return
-  fi
-
-  SELECTED_DOMAIN=${INSTALLED_APPS[$((APP_INDEX-1))]}
-  APP_DIR="$DOMAINS_DIR/$SELECTED_DOMAIN/public_html"
-  
-  # 配置类型选择
-  echo -e "\n${BOLD}${BLUE}选择要修改的配置类型:${RESET}"
-  echo -e "  ${GREEN}1)${RESET} 修改vless参数"
-  echo -e "  ${GREEN}2)${RESET} 修改哪吒监控参数"
-  read -p "$(echo -e "${BOLD}${CYAN}请选择 [1-2]: ${RESET}")" CONFIG_TYPE
-
-  case $CONFIG_TYPE in
-    1) modify_vless ;;
-    2) modify_nezha ;;
-    *)
-      echo -e "${RED}无效选项!${RESET}"
-      sleep 1
-      modify_config_menu
-      ;;
-  esac
-}
-
-# 修改vless参数（已修正 .htaccess 与 ws.php 的端口替换）
-modify_vless() {
-  show_header "修改vless参数"
-  cd "$APP_DIR"
-
-  # 获取当前配置
-  CURRENT_PORT=$(grep -oP "const port = process.env.PORT || \K\d+" app.js)
-  CURRENT_UUID=$(grep -oP "const UUID = process.env.UUID || '\K[^']+" app.js)
-
-  echo -e "${BOLD}当前配置:${RESET}"
-  echo -e "  ${CYAN}端口: ${YELLOW}$CURRENT_PORT${RESET}"
-  echo -e "  ${CYAN}UUID: ${YELLOW}$CURRENT_UUID${RESET}\n"
-
-  # 输入新参数
-  read -p "$(echo -e "${BOLD}${CYAN}请输入新端口号 [留空保持当前]: ${RESET}")" NEW_PORT
-  read -p "$(echo -e "${BOLD}${CYAN}请输入新UUID [留空保持当前]: ${RESET}")" NEW_UUID
-
-  # 应用修改
-  if [[ -n "$NEW_PORT" ]]; then
-    if [[ ! $NEW_PORT =~ ^[0-9]+$ ]] || [ $NEW_PORT -lt 1 ] || [ $NEW_PORT -gt 65535 ]; then
-      echo -e "${RED}无效的端口号!${RESET}"
-      return 1
-    fi
-
-    # 修改 app.js
-    sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $NEW_PORT;/" app.js
-    # 同步修改 .htaccess 和 ws.php 中的 127.0.0.1:旧端口
-    sed -i "s/127\.0\.0\.1:$CURRENT_PORT/127.0.0.1:$NEW_PORT/g" .htaccess ws.php
-  fi
-
-  if [[ -n "$NEW_UUID" ]]; then
-    sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$NEW_UUID';/" app.js
-  fi
-
-  # 重启服务并保存
-  pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
-  pm2 save
-
-  echo -e "\n${GREEN}✓ vless配置已更新!${RESET}"
-  sleep 2
-  main_menu
-}
-
-# 修改哪吒监控参数
-modify_nezha() {
-  show_header "修改哪吒监控参数"
-  cd "$APP_DIR"
-
-  # 获取当前配置
-  CURRENT_NEZHA_SERVER=$(grep -oP "const NEZHA_SERVER = process.env.NEZHA_SERVER || '\K[^']+" app.js)
-  CURRENT_NEZHA_PORT=$(grep -oP "const NEZHA_PORT = process.env.NEZHA_PORT || '\K[^']+" app.js)
-  CURRENT_NEZHA_KEY=$(grep -oP "const NEZHA_KEY = process.env.NEZHA_KEY || '\K[^']+" app.js)
-
-  echo -e "${BOLD}当前配置:${RESET}"
-  echo -e "  ${CYAN}服务器地址: ${YELLOW}$CURRENT_NEZHA_SERVER${RESET}"
-  echo -e "  ${CYAN}服务器端口: ${YELLOW}$CURRENT_NEZHA_PORT${RESET}"
-  echo -e "  ${CYAN}通信密钥: ${YELLOW}$CURRENT_NEZHA_KEY${RESET}\n"
-
-  # 输入新参数
-  read -p "$(echo -e "${BOLD}${CYAN}哪吒服务器地址 [留空保持当前]: ${RESET}")" NEW_NEZHA_SERVER
-  read -p "$(echo -e "${BOLD}${CYAN}哪吒服务器端口 [留空保持当前]: ${RESET}")" NEW_NEZHA_PORT
-  read -p "$(echo -e "${BOLD}${CYAN}哪吒通信密钥 [留空保持当前]: ${RESET}")" NEW_NEZHA_KEY
-
-  # 应用修改
-  [[ -n "$NEW_NEZHA_SERVER" ]] && sed -i "s/const NEZHA_SERVER = process.env.NEZHA_SERVER || '.*';/const NEZHA_SERVER = process.env.NEZHA_SERVER || '${NEW_NEZHA_SERVER}';/" app.js
-  [[ -n "$NEW_NEZHA_PORT" ]]   && sed -i "s/const NEZHA_PORT   = process.env.NEZHA_PORT   || '.*';/const NEZHA_PORT   = process.env.NEZHA_PORT   || '${NEW_NEZHA_PORT}';/"   app.js
-  [[ -n "$NEW_NEZHA_KEY" ]]    && sed -i "s/const NEZHA_KEY    = process.env.NEZHA_KEY    || '.*';/const NEZHA_KEY    = process.env.NEZHA_KEY    || '${NEW_NEZHA_KEY}';/"    app.js
-
-  # 重启服务并保存
-  pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
-  pm2 save
-
-  echo -e "\n${GREEN}✓ 哪吒监控配置已更新!${RESET}"
-  sleep 2
-  main_menu
 }
 
 # 安装哪吒监控
