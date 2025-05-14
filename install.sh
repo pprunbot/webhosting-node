@@ -51,20 +51,89 @@ main_menu() {
   echo -e "${BOLD}${MAGENTA}主菜单：${RESET}"
   echo -e "  ${GREEN}1)${RESET} vless部署"
   echo -e "  ${GREEN}2)${RESET} 卸载"
-  echo -e "  ${GREEN}3)${RESET} 退出"
+  echo -e "  ${GREEN}3)${RESET} 安装哪吒监控"
+  echo -e "  ${GREEN}4)${RESET} 退出"
   draw_line
-  read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-3]: ${RESET}")" MAIN_CHOICE
+  read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-4]: ${RESET}")" MAIN_CHOICE
 
   case $MAIN_CHOICE in
     1) install_menu ;;
     2) uninstall_menu ;;
-    3) exit 0 ;;
+    3) install_nezha ;;
+    4) exit 0 ;;
     *) 
       echo -e "${RED}无效选项，请重新选择${RESET}"
       sleep 1
       main_menu
       ;;
   esac
+}
+
+# 安装哪吒监控
+install_nezha() {
+  show_header "哪吒监控配置"
+
+  # 查找所有部署的应用
+  DOMAINS_DIR="/home/$USERNAME/domains"
+  INSTALLED_APPS=()
+  for domain in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
+    if [ -f "$DOMAINS_DIR/$domain/public_html/app.js" ]; then
+      INSTALLED_APPS+=("$domain")
+    fi
+  done
+
+  if [ ${#INSTALLED_APPS[@]} -eq 0 ]; then
+    echo -e "${RED}未找到已部署的应用，请先执行vless部署!${RESET}"
+    sleep 2
+    main_menu
+    return
+  fi
+
+  # 显示应用选择菜单
+  echo -e "${BOLD}${BLUE}选择要配置的应用:${RESET}"
+  for i in "${!INSTALLED_APPS[@]}"; do
+    printf "${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${INSTALLED_APPS[$i]}"
+  done
+
+  read -p "$(echo -e "${BOLD}${CYAN}请输入数字选择 [1-${#INSTALLED_APPS[@]}]: ${RESET}")" APP_INDEX
+  if [[ ! $APP_INDEX =~ ^[0-9]+$ ]] || [ $APP_INDEX -lt 1 ] || [ $APP_INDEX -gt ${#INSTALLED_APPS[@]} ]; then
+    echo -e "${RED}无效的选择!${RESET}"
+    sleep 1
+    main_menu
+    return
+  fi
+
+  SELECTED_DOMAIN=${INSTALLED_APPS[$((APP_INDEX-1))]}
+  APP_DIR="$DOMAINS_DIR/$SELECTED_DOMAIN/public_html"
+  cd "$APP_DIR"
+
+  # 获取哪吒配置参数
+  echo -e "\n${BOLD}${CYAN}请输入哪吒监控配置 (全部填写才生效):${RESET}"
+  read -p "$(echo -e "  ${CYAN}哪吒服务器地址 [默认 nezha.gvkoyeb.eu.org]: ${RESET}")" NEZHA_SERVER
+  NEZHA_SERVER=${NEZHA_SERVER:-nezha.gvkoyeb.eu.org}
+  read -p "$(echo -e "  ${CYAN}哪吒服务器端口 [默认 443]: ${RESET}")" NEZHA_PORT
+  NEZHA_PORT=${NEZHA_PORT:-443}
+  read -p "$(echo -e "  ${CYAN}哪吒通信密钥 (必填): ${RESET}")" NEZHA_KEY
+
+  # 验证参数
+  if [[ -z "$NEZHA_SERVER" || -z "$NEZHA_PORT" || -z "$NEZHA_KEY" ]]; then
+    echo -e "${RED}错误：必须填写所有参数才能启用哪吒监控!${RESET}"
+    sleep 2
+    main_menu
+    return
+  fi
+
+  # 修改app.js配置
+  sed -i "s|const NEZHA_SERVER = process.env.NEZHA_SERVER || '.*';|const NEZHA_SERVER = process.env.NEZHA_SERVER || '${NEZHA_SERVER}';|" app.js
+  sed -i "s|const NEZHA_PORT = process.env.NEZHA_PORT || '.*';|const NEZHA_PORT = process.env.NEZHA_PORT || '${NEZHA_PORT}';|" app.js
+  sed -i "s|const NEZHA_KEY = process.env.NEZHA_KEY || '.*';|const NEZHA_KEY = process.env.NEZHA_KEY || '${NEZHA_KEY}';|" app.js
+
+  # 重启服务
+  echo -e "${BLUE}正在重启应用服务...${RESET}"
+  pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
+  echo -e "${GREEN}✓ 哪吒监控已成功启用!${RESET}"
+  sleep 2
+  main_menu
 }
 
 # 安装菜单
@@ -238,6 +307,15 @@ start_installation() {
   sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
   sed -i "s/\$PORT/$PORT/g" .htaccess
   sed -i "s/\$PORT/$PORT/g" ws.php
+
+  # 添加哪吒监控变量（默认值）
+  if ! grep -q "NEZHA_SERVER" app.js; then
+    sed -i "/const port/a \\
+const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
+const NEZHA_PORT = process.env.NEZHA_PORT || '443';\\
+const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
+" app.js
+  fi
 
   echo -e "\n${BLUE}正在启动PM2服务...${RESET}"
   pm2 start app.js --name "my-app-${DOMAIN}"
