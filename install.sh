@@ -49,10 +49,10 @@ show_header "WebHosting Node 管理工具"
 # 主菜单
 main_menu() {
   echo -e "${BOLD}${MAGENTA}主菜单：${RESET}"
-  echo -e "  ${GREEN}1${RESET} vless部署"
-  echo -e "  ${GREEN}2${RESET} nezha安装"
-  echo -e "  ${GREEN}3${RESET} 卸载"
-  echo -e "  ${GREEN}4${RESET} 退出"
+  echo -e "  ${GREEN}1.${RESET} vless部署"
+  echo -e "  ${GREEN}2.${RESET} nezha安装"
+  echo -e "  ${GREEN}3.${RESET} 卸载"
+  echo -e "  ${GREEN}4.${RESET} 退出"
   draw_line
   read -p "$(echo -e "${BOLD}${CYAN}请选择操作 [1-4]: ${RESET}")" MAIN_CHOICE
 
