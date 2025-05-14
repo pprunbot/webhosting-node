@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 
 # 退出脚本执行错误
 set -e
@@ -157,8 +157,10 @@ modify_vless() {
     sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$NEW_UUID';/" app.js
   fi
 
-  # 重启服务
+  # 重启服务并保存
   pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
+  pm2 save
+
   echo -e "\n${GREEN}✓ vless配置已更新!${RESET}"
   sleep 2
   main_menu
@@ -189,12 +191,15 @@ modify_nezha() {
   [[ -n "$NEW_NEZHA_PORT" ]] && sed -i "s/const NEZHA_PORT = process.env.NEZHA_PORT || '.*';/const NEZHA_PORT = process.env.NEZHA_PORT || '${NEW_NEZHA_PORT}';/" app.js
   [[ -n "$NEW_NEZHA_KEY" ]] && sed -i "s/const NEZHA_KEY = process.env.NEZHA_KEY || '.*';/const NEZHA_KEY = process.env.NEZHA_KEY || '${NEW_NEZHA_KEY}';/" app.js
 
-  # 重启服务
+  # 重启服务并保存
   pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
+  pm2 save
+
   echo -e "\n${GREEN}✓ 哪吒监控配置已更新!${RESET}"
   sleep 2
   main_menu
 }
+
 # 安装哪吒监控
 install_nezha() {
   show_header "哪吒监控配置"
@@ -254,9 +259,11 @@ install_nezha() {
   sed -i "s|const NEZHA_PORT = process.env.NEZHA_PORT || '.*';|const NEZHA_PORT = process.env.NEZHA_PORT || '${NEZHA_PORT}';|" app.js
   sed -i "s|const NEZHA_KEY = process.env.NEZHA_KEY || '.*';|const NEZHA_KEY = process.env.NEZHA_KEY || '${NEZHA_KEY}';|" app.js
 
-  # 重启服务
+  # 重启服务并保存
   echo -e "${BLUE}正在重启应用服务...${RESET}"
   pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
+  pm2 save
+
   echo -e "${GREEN}✓ 哪吒监控已成功启用!${RESET}"
   sleep 2
   main_menu
@@ -437,6 +444,7 @@ start_installation() {
   # 添加哪吒监控变量（默认值）
   if ! grep -q "NEZHA_SERVER" app.js; then
     sed -i "/const port/a \\
+
 const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
 const NEZHA_PORT = process.env.NEZHA_PORT || '443';\\
 const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
