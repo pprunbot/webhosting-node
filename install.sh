@@ -332,7 +332,143 @@ install_menu() {
   start_installation
 }
 
-# …（后续 uninstall_menu、check_node、start_installation 等保持不变）…
+# 卸载菜单
+uninstall_menu() {
+  show_header "卸载"
+  
+  # 获取已部署项目
+  DOMAINS_DIR="/home/$USERNAME/domains"
+  INSTALLED=()
+  for domain in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
+    if [ -d "$DOMAINS_DIR/$domain/public_html" ]; then
+      INSTALLED+=("$domain")
+    fi
+  done
+
+  if [ ${#INSTALLED[@]} -eq 0 ]; then
+    echo -e "${YELLOW}没有找到可卸载的项目${RESET}"
+    sleep 2
+    main_menu
+    return
+  fi
+
+  echo -e "${BOLD}${RED}⚠ 警告：这将永久删除项目数据！${RESET}\n"
+  echo -e "${BOLD}${BLUE}已部署项目列表：${RESET}"
+  for i in "${!INSTALLED[@]}"; do
+    printf "${RED}%2d)${RESET} %s\n" "$((i+1))" "${INSTALLED[$i]}"
+  done
+
+  echo ""
+  read -p "$(echo -e "${BOLD}${CYAN}请选择要卸载的项目 [1-${#INSTALLED[@]}]: ${RESET}")" UNINSTALL_INDEX
+  if [[ ! $UNINSTALL_INDEX =~ ^[0-9]+$ ]] || [ $UNINSTALL_INDEX -lt 1 ] || [ $UNINSTALL_INDEX -gt ${#INSTALLED[@]} ]; then
+    echo -e "${RED}无效的选择${RESET}"
+    exit 1
+  fi
+
+  SELECTED_DOMAIN=${INSTALLED[$((UNINSTALL_INDEX-1))]}
+  
+  # 确认操作
+  read -p "$(echo -e "${BOLD}${RED}确认要卸载 ${SELECTED_DOMAIN} 吗？[y/N]: ${RESET}")" CONFIRM
+  if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
+    echo -e "${YELLOW}已取消卸载操作${RESET}"
+    exit 0
+  fi
+
+  # 执行卸载
+  echo -e "\n${BLUE}正在停止PM2服务...${RESET}"
+  pm2 stop "my-app-${SELECTED_DOMAIN}" || true
+  pm2 delete "my-app-${SELECTED_DOMAIN}" || true
+  pm2 save
+
+  echo -e "${BLUE}正在清理项目文件...${RESET}"
+  rm -rf "${DOMAINS_DIR}/${SELECTED_DOMAIN}/public_html"
+
+  echo -e "\n${GREEN}✓ ${SELECTED_DOMAIN} 已成功卸载${RESET}"
+  sleep 2
+  main_menu
+}
+
+# 检测Node.js安装
+check_node() {
+  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    echo -e "\n${BLUE}正在安装Node.js...${RESET}"
+    
+    mkdir -p ~/.local/node
+    echo -e "${CYAN}▶ 下载Node.js运行环境...${RESET}"
+    curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
+    echo -e "\n${CYAN}▶ 解压文件...${RESET}"
+    tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
+    echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
+    source ~/.bashrc
+    source ~/.bash_profile
+    rm node.tar.gz
+  fi
+
+  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
+    exit 1
+  fi
+}
+
+# 安装流程
+start_installation() {
+  check_node
+  echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
+  npm install -g pm2
+
+  PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
+  mkdir -p $PROJECT_DIR
+  cd $PROJECT_DIR
+
+  echo -e "\n${BLUE}正在下载项目文件...${RESET}"
+  FILES=("app.js" ".htaccess" "package.json" "ws.php")
+  for file in "${FILES[@]}"; do
+    echo -e "${CYAN}▶ 下载 $file...${RESET}"
+    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
+  done
+
+  echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
+  npm install
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}错误：npm依赖安装失败，请检查网络连接和package.json配置${RESET}"
+    exit 1
+  fi
+
+  echo -e "\n${BLUE}正在配置应用参数...${RESET}"
+  sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
+  sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
+  sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
+  sed -i "s/\$PORT/$PORT/g" .htaccess
+  sed -i "s/\$PORT/$PORT/g" ws.php
+
+  # 添加哪吒监控变量（默认值）
+  if ! grep -q "NEZHA_SERVER" app.js; then
+    sed -i "/const port/a \\
+
+const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
+const NEZHA_PORT = process.env.NEZHA_PORT || '443';\\
+const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
+" app.js
+  fi
+
+  echo -e "\n${BLUE}正在启动PM2服务...${RESET}"
+  pm2 start app.js --name "my-app-${DOMAIN}"
+  pm2 save
+
+  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
+
+  draw_line
+  echo -e "${GREEN}${BOLD}部署成功！${RESET}"
+  echo -e "${CYAN}访问地址\t: ${YELLOW}https://${DOMAIN}${RESET}"
+  echo -e "${CYAN}UUID\t\t: ${YELLOW}${UUID}${RESET}"
+  echo -e "${CYAN}端口号\t\t: ${YELLOW}${PORT}${RESET}"
+  echo -e "${CYAN}项目目录\t: ${YELLOW}${PROJECT_DIR}${RESET}"
+  echo -e "${CYAN}GitHub仓库\t: ${YELLOW}${PROJECT_URL}${RESET}"
+  draw_line
+  echo ""
+}
 
 # 启动主菜单
 main_menu
