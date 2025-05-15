@@ -257,37 +257,25 @@ uninstall_menu() {
 
 # 检测Node.js安装
 check_node() {
-  if ! command -v ~/.local/node/bin/node &> /dev/null || ! command -v ~/.local/node/bin/npm &> /dev/null; then
+  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
     echo -e "\n${BLUE}正在安装Node.js...${RESET}"
     
     mkdir -p ~/.local/node
     echo -e "${CYAN}▶ 下载Node.js运行环境...${RESET}"
-    if ! curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz; then
-      echo -e "${RED}Node.js下载失败，请检查网络连接${RESET}"
-      exit 1
-    fi
-    
+    curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
     echo -e "\n${CYAN}▶ 解压文件...${RESET}"
-    if ! tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node; then
-      echo -e "${RED}解压Node.js失败${RESET}"
-      rm -f node.tar.gz
-      exit 1
-    fi
-    rm -f node.tar.gz
-    
+    tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
     echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
-    echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bashrc
-    echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bash_profile
-    # 立即生效环境变量
-    export PATH="$HOME/.local/node/bin:$PATH"
-    
-    # 严格验证安装
-    if ! ~/.local/node/bin/node -v >/dev/null 2>&1; then
-      echo -e "${RED}Node.js二进制文件验证失败${RESET}"
-      exit 1
-    fi
-    echo -e "${GREEN}✓ Node.js $(~/.local/node/bin/node -v) 安装成功${RESET}"
-    echo -e "${GREEN}✓ npm $(~/.local/node/bin/npm -v) 安装成功${RESET}"
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
+    source ~/.bashrc
+    source ~/.bash_profile
+    rm node.tar.gz
+  fi
+
+  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
+    exit 1
   fi
 }
 
@@ -295,44 +283,23 @@ check_node() {
 start_installation() {
   check_node
   echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
-  
-  # 强制指定node和npm路径
-  NODE_PATH="$HOME/.local/node/bin/node"
-  NPM_PATH="$HOME/.local/node/bin/npm"
-  
-  # 使用绝对路径安装PM2
-  if ! "$NPM_PATH" install -g pm2 --prefix ~/.local/node; then
-    echo -e "${RED}PM2安装失败，尝试清理缓存后重试...${RESET}"
-    "$NPM_PATH" cache clean --force
-    if ! "$NPM_PATH" install -g pm2 --prefix ~/.local/node; then
-      echo -e "${RED}PM2安装最终失败，请检查以下内容："
-      echo -e "1. 确保磁盘空间充足"
-      echo -e "2. 检查网络连接"
-      echo -e "3. 尝试手动执行: $NPM_PATH install -g pm2${RESET}"
-      exit 1
-    fi
-  fi
+  npm install -g pm2
 
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
-  mkdir -p "$PROJECT_DIR"
-  cd "$PROJECT_DIR"
+  mkdir -p $PROJECT_DIR
+  cd $PROJECT_DIR
 
   echo -e "\n${BLUE}正在下载项目文件...${RESET}"
   FILES=("app.js" ".htaccess" "package.json" "ws.php")
   for file in "${FILES[@]}"; do
     echo -e "${CYAN}▶ 下载 $file...${RESET}"
-    if ! curl -#fsSL "https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file" -O; then
-      echo -e "${RED}文件 $file 下载失败${RESET}"
-      exit 1
-    fi
+    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
   done
 
   echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
-  if ! "$NPM_PATH" install --loglevel=error; then
-    echo -e "${RED}错误：npm依赖安装失败，请检查："
-    echo -e "1. package.json 文件完整性"
-    echo -e "2. 网络连接是否正常"
-    echo -e "3. 手动执行: $NPM_PATH install${RESET}"
+  npm install
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}错误：npm依赖安装失败，请检查网络连接和package.json配置${RESET}"
     exit 1
   fi
 
@@ -354,10 +321,10 @@ const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
   fi
 
   echo -e "\n${BLUE}正在启动PM2服务...${RESET}"
-  "$NPM_PATH" run pm2 start app.js --name "my-app-${DOMAIN}"
-  "$NPM_PATH" run pm2 save
+  pm2 start app.js --name "my-app-${DOMAIN}"
+  pm2 save
 
-  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && $NODE_PATH $HOME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
+  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
 
   draw_line
   echo -e "${GREEN}${BOLD}部署成功！${RESET}"
