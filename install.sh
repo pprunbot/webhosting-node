@@ -262,20 +262,29 @@ check_node() {
     
     mkdir -p ~/.local/node
     echo -e "${CYAN}▶ 下载Node.js运行环境...${RESET}"
-    curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
+    curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz || {
+      echo -e "${RED}Node.js下载失败，请检查网络连接${RESET}"
+      exit 1
+    }
     echo -e "\n${CYAN}▶ 解压文件...${RESET}"
-    tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
+    tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node || {
+      echo -e "${RED}解压Node.js失败${RESET}"
+      exit 1
+    }
     echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
     echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
     echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
-    source ~/.bashrc
-    source ~/.bash_profile
-    rm node.tar.gz
-  fi
-
-  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
-    exit 1
+    # 立即生效环境变量
+    export PATH="$HOME/.local/node/bin:$PATH"
+    rm -f node.tar.gz
+    
+    # 验证安装
+    if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+      echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
+      exit 1
+    fi
+    echo -e "${GREEN}✓ Node.js $(node -v) 安装成功${RESET}"
+    echo -e "${GREEN}✓ npm $(npm -v) 安装成功${RESET}"
   fi
 }
 
@@ -283,7 +292,15 @@ check_node() {
 start_installation() {
   check_node
   echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
-  npm install -g pm2
+  # 使用用户目录安装避免权限问题
+  npm install -g pm2 --prefix ~/.local/node &>/dev/null || {
+    echo -e "${RED}PM2安装失败，尝试清理缓存后重试...${RESET}"
+    npm cache clean --force
+    npm install -g pm2 --prefix ~/.local/node || {
+      echo -e "${RED}PM2安装失败，请检查日志${RESET}"
+      exit 1
+    }
+  }
 
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
   mkdir -p $PROJECT_DIR
@@ -293,11 +310,14 @@ start_installation() {
   FILES=("app.js" ".htaccess" "package.json" "ws.php")
   for file in "${FILES[@]}"; do
     echo -e "${CYAN}▶ 下载 $file...${RESET}"
-    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
+    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O || {
+      echo -e "${RED}文件 $file 下载失败${RESET}"
+      exit 1
+    }
   done
 
   echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
-  npm install
+  npm install --loglevel=error
   if [ $? -ne 0 ]; then
     echo -e "${RED}错误：npm依赖安装失败，请检查网络连接和package.json配置${RESET}"
     exit 1
@@ -321,8 +341,8 @@ const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
   fi
 
   echo -e "\n${BLUE}正在启动PM2服务...${RESET}"
-  pm2 start app.js --name "my-app-${DOMAIN}"
-  pm2 save
+  ~/.local/node/bin/pm2 start app.js --name "my-app-${DOMAIN}"
+  ~/.local/node/bin/pm2 save
 
   (crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
 
