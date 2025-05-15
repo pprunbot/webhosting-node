@@ -255,32 +255,39 @@ uninstall_menu() {
   main_menu
 }
 
-# 检测Node.js安装
+# 检测并安装Node.js
 check_node() {
   if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
     echo -e "\n${BLUE}正在安装Node.js...${RESET}"
-    
+
+    # 根据操作系统选择二进制包
+    OS_NAME=$(uname)
+    if [ "$OS_NAME" = "FreeBSD" ]; then
+      NODE_DIST="freebsd-x64"
+    else
+      NODE_DIST="linux-x64"
+    fi
+
     mkdir -p ~/.local/node
-    echo -e "${CYAN}▶ 下载Node.js运行环境...${RESET}"
-    curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
+    echo -e "${CYAN}▶ 下载Node.js运行环境 (${NODE_DIST})...${RESET}"
+    curl -#fsSL "https://nodejs.org/dist/v20.12.2/node-v20.12.2-${NODE_DIST}.tar.gz" -o node.tar.gz
+
     echo -e "\n${CYAN}▶ 解压文件...${RESET}"
     tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
     rm node.tar.gz
 
     echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
-    # 将 node bin 和 npm 全局 bin 目录都加入 PATH
     {
       echo 'export PATH=$HOME/.local/node/bin:$HOME/.local/bin:$PATH'
     } >> ~/.bashrc
     {
       echo 'export PATH=$HOME/.local/node/bin:$HOME/.local/bin:$PATH'
     } >> ~/.bash_profile
-    # 立即生效
     export PATH="$HOME/.local/node/bin:$HOME/.local/bin:$PATH"
   fi
 
   if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
+    echo -e "${RED}Node.js 安装失败，请手动检查${RESET}"
     exit 1
   fi
 }
@@ -290,7 +297,6 @@ start_installation() {
   check_node
 
   echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
-  # 修复点：将 npm 的全局前缀设到 ~/.local，并开启 unsafe-perm
   npm config set prefix "$HOME/.local"
   npm config set unsafe-perm true
   npm install -g pm2
@@ -309,7 +315,7 @@ start_installation() {
   echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
   npm install
   if [ $? -ne 0 ]; then
-    echo -e "${RED}错误：npm依赖安装失败，请检查网络连接和package.json配置${RESET}"
+    echo -e "${RED}错误：npm依赖安装失败，请检查网络${RESET}"
     exit 1
   fi
 
@@ -320,7 +326,6 @@ start_installation() {
   sed -i "s/\$PORT/$PORT/g" .htaccess
   sed -i "s/\$PORT/$PORT/g" ws.php
 
-  # 哪吒监控默认值注入
   if ! grep -q "NEZHA_SERVER" app.js; then
     sed -i "/const port/a \\
 const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
@@ -333,7 +338,6 @@ const NEZHA_KEY    = process.env.NEZHA_KEY    || '';\\
   pm2 start app.js --name "my-app-${DOMAIN}"
   pm2 save
 
-  # 开机自动重启
   (crontab -l 2>/dev/null; echo "@reboot sleep 30 && $HOME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
 
   draw_line
