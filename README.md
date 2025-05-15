@@ -30,7 +30,7 @@
 
 ## 🚀 快速开始
 
-复制以下命令，在终端中粘贴执行：
+一键安装脚本，在终端中粘贴执行：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/install.sh -o install.sh
