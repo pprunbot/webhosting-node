@@ -255,24 +255,19 @@ uninstall_menu() {
   main_menu
 }
 
-# 一律使用 nvm 安装 Node.js & npm
+# 使用 nvm 安装并管理 Node.js
 check_node(){
   if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
     echo -e "\n${BLUE}检测到未安装 Node.js，使用 nvm 安装...${RESET}"
-    # 安装 nvm（如已存在则跳过）
     if [ ! -d "$HOME/.nvm" ]; then
       curl -#fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
     fi
     export NVM_DIR="$HOME/.nvm"
-    # shellcheck source=/dev/null
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-
-    # 安装指定版本并使用
     nvm install 20.12.2
     nvm alias default 20.12.2
     nvm use default
   fi
-
   # 再次校验
   if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
     echo -e "${RED}Node.js 安装或加载失败，请检查 nvm 配置${RESET}"
@@ -284,9 +279,6 @@ check_node(){
 start_installation(){
   check_node
 
-  echo -e "\n${BLUE}正在安装 PM2 进程管理器...${RESET}"
-  npm install -g pm2
-
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
   mkdir -p "$PROJECT_DIR" && cd "$PROJECT_DIR"
 
@@ -295,8 +287,10 @@ start_installation(){
     curl -#fsSL "https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file" -O
   done
 
-  echo -e "\n${BLUE}安装项目依赖...${RESET}"
+  echo -e "\n${BLUE}安装项目依赖（含 pm2）...${RESET}"
+  # 将 pm2 当作项目依赖
   npm install
+  npm install pm2
 
   echo -e "\n${BLUE}配置应用参数...${RESET}"
   sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
@@ -313,10 +307,12 @@ const NEZHA_KEY    = process.env.NEZHA_KEY    || '';\\
   fi
 
   echo -e "\n${BLUE}启动 PM2 服务...${RESET}"
-  pm2 start app.js --name "my-app-${DOMAIN}"
-  pm2 save
+  # 通过 npx 调用本地 pm2
+  npx pm2 start app.js --name "my-app-${DOMAIN}"
+  npx pm2 save
 
-  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && pm2 resurrect --no-daemon") | crontab -
+  echo -e "\n${BLUE}设置开机自动恢复...${RESET}"
+  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && cd $PROJECT_DIR && npx pm2 resurrect --no-daemon") | crontab -
 
   draw_line
   echo -e "${GREEN}${BOLD}部署成功！${RESET}"
@@ -329,5 +325,5 @@ const NEZHA_KEY    = process.env.NEZHA_KEY    || '';\\
   main_menu
 }
 
-# 启动
+# 启动主菜单
 main_menu
