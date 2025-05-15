@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash  
 
 # 退出脚本执行错误
 set -e
@@ -61,7 +61,7 @@ main_menu() {
     2) install_nezha ;;
     3) uninstall_menu ;;
     4) exit 0 ;;
-    *)
+    *) 
       echo -e "${RED}无效选项，请重新选择${RESET}"
       sleep 1
       main_menu
@@ -141,7 +141,7 @@ install_nezha() {
 # 安装菜单
 install_menu() {
   show_header "vless部署"
-
+  
   # 检测域名目录
   DOMAINS_DIR="/home/$USERNAME/domains"
   if [ ! -d "$DOMAINS_DIR" ]; then
@@ -202,7 +202,7 @@ install_menu() {
 # 卸载菜单
 uninstall_menu() {
   show_header "卸载"
-
+  
   # 获取已部署项目
   DOMAINS_DIR="/home/$USERNAME/domains"
   INSTALLED=()
@@ -233,7 +233,7 @@ uninstall_menu() {
   fi
 
   SELECTED_DOMAIN=${INSTALLED[$((UNINSTALL_INDEX-1))]}
-
+  
   # 确认操作
   read -p "$(echo -e "${BOLD}${RED}确认要卸载 ${SELECTED_DOMAIN} 吗？[y/N]: ${RESET}")" CONFIRM
   if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
@@ -255,43 +255,26 @@ uninstall_menu() {
   main_menu
 }
 
-# 检测Node.js安装并根据架构下载对应包
+# 检测Node.js安装
 check_node() {
   if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
     echo -e "\n${BLUE}正在安装Node.js...${RESET}"
-
-    # 识别系统架构
-    ARCH=$(uname -m)
-    case "$ARCH" in
-      x86_64) DIST="linux-x64" ;;
-      aarch64|arm64) DIST="linux-arm64" ;;
-      *) 
-        echo -e "${RED}未知架构 $ARCH，无法自动安装 Node.js，请手动安装后重试${RESET}"
-        exit 1
-        ;;
-    esac
-
-    NODE_VERSION="v20.12.2"
-    INSTALL_DIR="$HOME/.local/node"
-    URL="https://nodejs.org/dist/$NODE_VERSION/node-$NODE_VERSION-$DIST.tar.gz"
-
-    mkdir -p "$INSTALL_DIR"
-    echo -e "${CYAN}▶ 下载 Node.js $NODE_VERSION ($DIST)...${RESET}"
-    curl -#fsSL "$URL" -o node.tar.gz
+    
+    mkdir -p ~/.local/node
+    echo -e "${CYAN}▶ 下载Node.js运行环境...${RESET}"
+    curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
     echo -e "\n${CYAN}▶ 解压文件...${RESET}"
-    tar -xzf node.tar.gz --strip-components=1 -C "$INSTALL_DIR"
-    rm node.tar.gz
-
+    tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
     echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
-    grep -qxF 'export PATH=$HOME/.local/node/bin:$PATH' ~/.bashrc || echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
-    grep -qxF 'export PATH=$HOME/.local/node/bin:$PATH' ~/.bash_profile || echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
-    # 立即生效
-    export PATH="$HOME/.local/node/bin:$PATH"
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
+    source ~/.bashrc
+    source ~/.bash_profile
+    rm node.tar.gz
   fi
 
-  # 再次确认安装成功
   if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "${RED}Node.js 安装失败，请手动安装后重试${RESET}"
+    echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
     exit 1
   fi
 }
@@ -303,14 +286,14 @@ start_installation() {
   npm install -g pm2
 
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
-  mkdir -p "$PROJECT_DIR"
-  cd "$PROJECT_DIR"
+  mkdir -p $PROJECT_DIR
+  cd $PROJECT_DIR
 
   echo -e "\n${BLUE}正在下载项目文件...${RESET}"
   FILES=("app.js" ".htaccess" "package.json" "ws.php")
   for file in "${FILES[@]}"; do
     echo -e "${CYAN}▶ 下载 $file...${RESET}"
-    curl -#fsSL "https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file" -O
+    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
   done
 
   echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
@@ -341,7 +324,7 @@ const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
   pm2 start app.js --name "my-app-${DOMAIN}"
   pm2 save
 
-  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && $HOME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
+  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
 
   draw_line
   echo -e "${GREEN}${BOLD}部署成功！${RESET}"
