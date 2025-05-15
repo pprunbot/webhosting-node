@@ -255,64 +255,76 @@ uninstall_menu() {
   main_menu
 }
 
-# 使用 nvm 安装并管理 Node.js
-check_node(){
-  if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
-    echo -e "\n${BLUE}检测到未安装 Node.js，使用 nvm 安装...${RESET}"
-    if [ ! -d "$HOME/.nvm" ]; then
-      curl -#fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
-    fi
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-    nvm install 20.12.2
-    nvm alias default 20.12.2
-    nvm use default
+# 检测Node.js安装
+check_node() {
+  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    echo -e "\n${BLUE}正在安装Node.js...${RESET}"
+    
+    mkdir -p ~/.local/node
+    echo -e "${CYAN}▶ 下载Node.js运行环境...${RESET}"
+    curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
+    echo -e "\n${CYAN}▶ 解压文件...${RESET}"
+    tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
+    echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
+    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
+    source ~/.bashrc
+    source ~/.bash_profile
+    rm node.tar.gz
   fi
-  # 再次校验
-  if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
-    echo -e "${RED}Node.js 安装或加载失败，请检查 nvm 配置${RESET}"
+
+  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
     exit 1
   fi
 }
 
-# 部署流程
-start_installation(){
+# 安装流程
+start_installation() {
   check_node
-
-  PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
-  mkdir -p "$PROJECT_DIR" && cd "$PROJECT_DIR"
-
-  echo -e "\n${BLUE}下载项目文件...${RESET}"
-  for file in app.js .htaccess package.json ws.php; do
-    curl -#fsSL "https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file" -O
-  done
-
-  echo -e "\n${BLUE}安装项目依赖（含 pm2）...${RESET}"
-  # 将 pm2 当作项目依赖
-  npm install
+  echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
   npm install pm2
 
-  echo -e "\n${BLUE}配置应用参数...${RESET}"
-  sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
-  sed -i "s/const UUID   = process.env.UUID   || '.*';/const UUID   = process.env.UUID   || '$UUID';/" app.js
-  sed -i "s/const port   = process.env.PORT   || .*;/const port   = process.env.PORT   || $PORT;/" app.js
-  sed -i "s/\$PORT/$PORT/g" .htaccess ws.php
+  PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
+  mkdir -p $PROJECT_DIR
+  cd $PROJECT_DIR
 
+  echo -e "\n${BLUE}正在下载项目文件...${RESET}"
+  FILES=("app.js" ".htaccess" "package.json" "ws.php")
+  for file in "${FILES[@]}"; do
+    echo -e "${CYAN}▶ 下载 $file...${RESET}"
+    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
+  done
+
+  echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
+  npm install
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}错误：npm依赖安装失败，请检查网络连接和package.json配置${RESET}"
+    exit 1
+  fi
+
+  echo -e "\n${BLUE}正在配置应用参数...${RESET}"
+  sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
+  sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
+  sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
+  sed -i "s/\$PORT/$PORT/g" .htaccess
+  sed -i "s/\$PORT/$PORT/g" ws.php
+
+  # 添加哪吒监控变量（默认值）
   if ! grep -q "NEZHA_SERVER" app.js; then
     sed -i "/const port/a \\
+
 const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
-const NEZHA_PORT   = process.env.NEZHA_PORT   || '443';\\
-const NEZHA_KEY    = process.env.NEZHA_KEY    || '';\\
+const NEZHA_PORT = process.env.NEZHA_PORT || '443';\\
+const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
 " app.js
   fi
 
-  echo -e "\n${BLUE}启动 PM2 服务...${RESET}"
-  # 通过 npx 调用本地 pm2
-  npx pm2 start app.js --name "my-app-${DOMAIN}"
-  npx pm2 save
+  echo -e "\n${BLUE}正在启动PM2服务...${RESET}"
+  pm2 start app.js --name "my-app-${DOMAIN}"
+  pm2 save
 
-  echo -e "\n${BLUE}设置开机自动恢复...${RESET}"
-  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && cd $PROJECT_DIR && npx pm2 resurrect --no-daemon") | crontab -
+  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
 
   draw_line
   echo -e "${GREEN}${BOLD}部署成功！${RESET}"
@@ -320,9 +332,9 @@ const NEZHA_KEY    = process.env.NEZHA_KEY    || '';\\
   echo -e "${CYAN}UUID\t\t: ${YELLOW}${UUID}${RESET}"
   echo -e "${CYAN}端口号\t\t: ${YELLOW}${PORT}${RESET}"
   echo -e "${CYAN}项目目录\t: ${YELLOW}${PROJECT_DIR}${RESET}"
-  echo -e "${CYAN}GitHub\t\t: ${YELLOW}${PROJECT_URL}${RESET}"
+  echo -e "${CYAN}GitHub仓库\t: ${YELLOW}${PROJECT_URL}${RESET}"
   draw_line
-  main_menu
+  echo ""
 }
 
 # 启动主菜单
