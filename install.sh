@@ -265,17 +265,18 @@ check_node() {
     curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
     echo -e "\n${CYAN}▶ 解压文件...${RESET}"
     tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
-    echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
-    export PATH="$HOME/.local/node/bin:$PATH" # 立即生效
     rm node.tar.gz
-  fi
 
-  # 安装构建工具
-  if ! command -v make &> /dev/null || ! command -v g++ &> /dev/null || ! command -v python3 &> /dev/null; then
-    echo -e "\n${BLUE}正在安装构建工具...${RESET}"
-    sudo apt-get update && sudo apt-get install -y build-essential python3
+    echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
+    # 将 node bin 和 npm 全局 bin 目录都加入 PATH
+    {
+      echo 'export PATH=$HOME/.local/node/bin:$HOME/.local/bin:$PATH'
+    } >> ~/.bashrc
+    {
+      echo 'export PATH=$HOME/.local/node/bin:$HOME/.local/bin:$PATH'
+    } >> ~/.bash_profile
+    # 立即生效
+    export PATH="$HOME/.local/node/bin:$HOME/.local/bin:$PATH"
   fi
 
   if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
@@ -287,18 +288,22 @@ check_node() {
 # 安装流程
 start_installation() {
   check_node
+
   echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
-  "$HOME/.local/node/bin/npm" install -g pm2
+  # 修复点：将 npm 的全局前缀设到 ~/.local，并开启 unsafe-perm
+  npm config set prefix "$HOME/.local"
+  npm config set unsafe-perm true
+  npm install -g pm2
 
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
-  mkdir -p $PROJECT_DIR
-  cd $PROJECT_DIR
+  mkdir -p "$PROJECT_DIR"
+  cd "$PROJECT_DIR"
 
   echo -e "\n${BLUE}正在下载项目文件...${RESET}"
   FILES=("app.js" ".htaccess" "package.json" "ws.php")
   for file in "${FILES[@]}"; do
     echo -e "${CYAN}▶ 下载 $file...${RESET}"
-    curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
+    curl -#fsSL "https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file" -O
   done
 
   echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
@@ -315,13 +320,12 @@ start_installation() {
   sed -i "s/\$PORT/$PORT/g" .htaccess
   sed -i "s/\$PORT/$PORT/g" ws.php
 
-  # 添加哪吒监控变量（默认值）
+  # 哪吒监控默认值注入
   if ! grep -q "NEZHA_SERVER" app.js; then
     sed -i "/const port/a \\
-
 const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
-const NEZHA_PORT = process.env.NEZHA_PORT || '443';\\
-const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
+const NEZHA_PORT   = process.env.NEZHA_PORT   || '443';\\
+const NEZHA_KEY    = process.env.NEZHA_KEY    || '';\\
 " app.js
   fi
 
@@ -329,7 +333,8 @@ const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
   pm2 start app.js --name "my-app-${DOMAIN}"
   pm2 save
 
-  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
+  # 开机自动重启
+  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && $HOME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
 
   draw_line
   echo -e "${GREEN}${BOLD}部署成功！${RESET}"
