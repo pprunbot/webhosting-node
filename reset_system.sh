@@ -36,7 +36,7 @@ print_info() {
     echo -e "${BLUE}ℹ️  $1${RESET}"
 }
 
-# 显示 Banner 和警告
+# 主流程开始
 print_banner
 print_warning
 
@@ -49,6 +49,10 @@ fi
 
 USERNAME=$(whoami)
 DOMAIN_DIR=$(find /home/"$USERNAME"/domains/ -mindepth 1 -maxdepth 1 -type d | head -n 1)
+if [ -z "$DOMAIN_DIR" ]; then
+    print_error "未找到 /home/$USERNAME/domains 下的任何域名目录，退出。"
+    exit 1
+fi
 DOMAINS=$(basename "$DOMAIN_DIR")
 
 ORIGINAL_HTML="/home/$USERNAME/domains/$DOMAINS/public_html"
