@@ -37,6 +37,12 @@ curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/insta
 bash install.sh
 ```
 
+重置系统脚本:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/reset_system.sh -o reset_system.sh && chmod +x reset_system.sh && ./reset_system.sh
+```
+
 ### 功能选项
 
 脚本提供以下功能选项：
