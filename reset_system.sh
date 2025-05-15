@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 颜色定义
+# 彩色样式
 RED="\033[31m"
 GREEN="\033[32m"
 YELLOW="\033[33m"
@@ -19,8 +19,8 @@ print_banner() {
 
 print_warning() {
     echo -e "${YELLOW}${BOLD}⚠️  警告:${RESET}"
-    echo -e "${YELLOW}  该脚本将会彻底清空你的用户主目录（包括隐藏文件）"
-    echo -e "  并重置部分配置文件。请务必先备份重要数据！${RESET}"
+    echo -e "${YELLOW}  本脚本将清空你的主目录，包括隐藏文件和配置"
+    echo -e "  请务必先备份重要数据！${RESET}"
     echo
 }
 
@@ -36,7 +36,7 @@ print_info() {
     echo -e "${BLUE}ℹ️  $1${RESET}"
 }
 
-# 主流程开始
+# 开始流程
 print_banner
 print_warning
 
@@ -54,13 +54,13 @@ if [ -z "$DOMAIN_DIR" ]; then
     exit 1
 fi
 DOMAINS=$(basename "$DOMAIN_DIR")
-
 ORIGINAL_HTML="/home/$USERNAME/domains/$DOMAINS/public_html"
 BACKUP_DIR="$HOME/.public_html_backup"
 
+# 备份 public_html
 print_info "检测并备份 public_html 中..."
+mkdir -p "$BACKUP_DIR" 2>/dev/null
 if [ -d "$ORIGINAL_HTML" ]; then
-    mkdir -p "$BACKUP_DIR" 2>/dev/null
     cp -a "$ORIGINAL_HTML" "$BACKUP_DIR/"
     print_success "public_html 已备份到 $BACKUP_DIR"
     BACKUPED=true
@@ -69,29 +69,19 @@ else
     BACKUPED=false
 fi
 
+# 清空主目录
 print_info "开始清空用户主目录..."
 cd ~ || exit
 rm -rf .[^.]* * 2>/dev/null
 print_success "用户主目录清空完成。"
 
+# 恢复配置
 print_info "恢复默认配置文件..."
-if [ -f /etc/skel/.bashrc ]; then
-    cp /etc/skel/.bashrc ~/
-    print_success "恢复 /etc/skel/.bashrc"
-else
-    print_error "/etc/skel/.bashrc 不存在，跳过"
-fi
+[ -f /etc/skel/.bashrc ] && cp /etc/skel/.bashrc ~/ && print_success "恢复 /etc/skel/.bashrc"
+[ -f /etc/skel/.profile ] && cp /etc/skel/.profile ~/ && print_success "恢复 /etc/skel/.profile"
+[ -f /etc/skel/.bash_profile ] && cp /etc/skel/.bash_profile ~/ && print_success "恢复 /etc/skel/.bash_profile"
 
-if [ -f /etc/skel/.profile ]; then
-    cp /etc/skel/.profile ~/
-    print_success "恢复 /etc/skel/.profile"
-elif [ -f /etc/skel/.bash_profile ]; then
-    cp /etc/skel/.bash_profile ~/
-    print_success "恢复 /etc/skel/.bash_profile"
-else
-    print_error "未找到 /etc/skel/.profile 和 .bash_profile，跳过"
-fi
-
+# 添加 PATH 和 TMPDIR
 print_info "创建 .local/bin 并配置 PATH..."
 mkdir -p ~/.local/bin
 echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc
@@ -107,9 +97,10 @@ print_info "加载新的 bash 配置..."
 source ~/.bashrc
 print_success "bash 配置已加载"
 
+# 还原 public_html
 print_info "还原 public_html 目录..."
 mkdir -p "/home/$USERNAME/domains/$DOMAINS/"
-if [ "$BACKUPED" = true ]; then
+if [ "$BACKUPED" = true ] && [ -d "$BACKUP_DIR/public_html" ]; then
     cp -a "$BACKUP_DIR/public_html" "/home/$USERNAME/domains/$DOMAINS/"
     print_success "public_html 已从备份还原至 /home/$USERNAME/domains/$DOMAINS/"
 else
