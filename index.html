@@ -1,0 +1,1462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Journey - Wormhole Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700&display=swap');
+        
+        :root {
+            --primary: #00f0ff;
+            --secondary: #7b2dff;
+            --tertiary: #ff2d7b;
+            --dark: #0a0a1a;
+            --darker: #050510;
+            --light: #e0e0ff;
+            --accent: #ff2d7b;
+        }
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Space Grotesk', 'Orbitron', sans-serif;
+            background-color: var(--dark);
+            color: var(--light);
+            touch-action: none;
+        }
+        
+        #canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        #ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 1.5rem;
+            box-sizing: border-box;
+        }
+        
+        .glass-panel {
+            background: rgba(10, 10, 26, 0.4);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-radius: 1.5rem;
+            border: 1px solid rgba(224, 224, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            padding: 1.25rem;
+            pointer-events: all;
+            transition: all 0.3s ease;
+        }
+        
+        .glass-panel:hover {
+            border-color: rgba(224, 224, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 240, 255, 0.1);
+        }
+        
+        .control-btn {
+            width: 3.5rem;
+            height: 3.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(0, 240, 255, 0.1), rgba(123, 45, 255, 0.1));
+            border: 1px solid rgba(224, 224, 255, 0.1);
+            color: var(--primary);
+            font-size: 1.25rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .control-btn:hover {
+            background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(123, 45, 255, 0.2));
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+            color: white;
+        }
+        
+        .control-btn.active {
+            background: linear-gradient(135deg, rgba(0, 240, 255, 0.3), rgba(123, 45, 255, 0.3));
+            color: white;
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.5);
+        }
+        
+        .control-btn i {
+            pointer-events: none;
+        }
+        
+        .progress-track {
+            height: 0.5rem;
+            background: rgba(224, 224, 255, 0.1);
+            border-radius: 1rem;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            border-radius: 1rem;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+        }
+        
+        .hud-element {
+            position: absolute;
+            background: rgba(10, 10, 26, 0.3);
+            border-radius: 0.75rem;
+            padding: 0.75rem;
+            border: 1px solid rgba(224, 224, 255, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .hud-element:hover {
+            background: rgba(10, 10, 26, 0.5);
+            border-color: rgba(224, 224, 255, 0.2);
+        }
+        
+        .hud-element i {
+            font-size: 1rem;
+            color: var(--primary);
+        }
+        
+        .particle-indicator {
+            width: 0.75rem;
+            height: 0.75rem;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 0.25rem;
+            box-shadow: 0 0 5px currentColor;
+        }
+        
+        .neon-text {
+            text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+        
+        .slide-in {
+            animation: slideIn 0.5s ease-out forwards;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .notification {
+            position: fixed;
+            top: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 10, 26, 0.9);
+            border-left: 4px solid var(--primary);
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            animation: slideIn 0.3s ease-out;
+            max-width: 90%;
+            width: auto;
+        }
+        
+        .notification i {
+            color: var(--primary);
+            font-size: 1.25rem;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(10, 10, 26, 0.9);
+            color: var(--light);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+            border: 1px solid rgba(224, 224, 255, 0.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+        
+        .control-btn:hover .tooltip {
+            opacity: 1;
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 5, 16, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        
+        .modal.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        
+        .modal-content {
+            background: var(--darker);
+            border-radius: 1.5rem;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 1px solid rgba(0, 240, 255, 0.2);
+            box-shadow: 0 0 30px rgba(0, 240, 255, 0.2);
+        }
+        
+        .close-modal {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            color: var(--light);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        
+        .settings-option {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid rgba(224, 224, 255, 0.1);
+        }
+        
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(224, 224, 255, 0.1);
+            transition: .4s;
+            border-radius: 24px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: var(--light);
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: var(--primary);
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        
+        .slider-text {
+            margin-left: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--light);
+        }
+        
+        .range-slider {
+            width: 100%;
+            -webkit-appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(224, 224, 255, 0.1);
+            outline: none;
+        }
+        
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 240, 255, 0.8);
+        }
+        
+        .range-slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(0, 240, 255, 0.8);
+        }
+        
+        .destination-card {
+            background: rgba(10, 10, 26, 0.5);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(224, 224, 255, 0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .destination-card:hover {
+            background: rgba(10, 10, 26, 0.7);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        .destination-card.active {
+            background: rgba(0, 240, 255, 0.1);
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+        }
+        
+        .warp-effect {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(0,240,255,0.1) 0%, rgba(123,45,255,0.05) 50%, rgba(0,0,0,0) 70%);
+            pointer-events: none;
+            z-index: 5;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        
+        .warp-effect.active {
+            opacity: 1;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            #ui-overlay {
+                padding: 1rem;
+            }
+            
+            .glass-panel {
+                padding: 1rem;
+            }
+            
+            .control-btn {
+                width: 3rem;
+                height: 3rem;
+                font-size: 1rem;
+            }
+            
+            .hud-element {
+                font-size: 0.75rem;
+                padding: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas"></div>
+    <div id="warp-effect" class="warp-effect"></div>
+    
+    <div id="ui-overlay">
+        <!-- Top Bar -->
+        <div class="glass-panel w-full max-w-2xl mx-auto">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-xl font-bold neon-text">COSMIC JOURNEY</h1>
+                    <p class="text-xs opacity-80">WORMHOLE SIMULATOR v2.1</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="hud-element">
+                        <i class="fas fa-satellite-dish"></i>
+                        <span>STABLE CONNECTION</span>
+                    </div>
+                    <div class="hud-element">
+                        <i class="fas fa-battery-three-quarters"></i>
+                        <span id="power-level">87% POWER</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Center HUD -->
+        <div class="flex flex-col items-center justify-center gap-4 pointer-events-none">
+            <div class="glass-panel px-6 py-3 flex items-center gap-4">
+                <div class="text-center">
+                    <div class="text-xs opacity-80">WARP SPEED</div>
+                    <div class="text-2xl font-bold neon-text" id="speed-display">0.7<span class="text-sm">x</span></div>
+                </div>
+                <div class="h-8 w-px bg-gradient-to-b from-transparent via-white/20 to-transparent"></div>
+                <div class="text-center">
+                    <div class="text-xs opacity-80">DISTANCE</div>
+                    <div class="text-2xl font-bold neon-text" id="distance-display">1.4<span class="text-sm">LY</span></div>
+                </div>
+                <div class="h-8 w-px bg-gradient-to-b from-transparent via-white/20 to-transparent"></div>
+                <div class="text-center">
+                    <div class="text-xs opacity-80">TIME DILATION</div>
+                    <div class="text-2xl font-bold neon-text" id="time-dilation-display">3.2<span class="text-sm">x</span></div>
+                </div>
+            </div>
+            
+            <div id="target-indicator" class="w-16 h-16 rounded-full border-2 border-white/20 flex items-center justify-center pulse">
+                <div class="w-10 h-10 rounded-full border-2 border-primary/50 animate-ping"></div>
+            </div>
+        </div>
+        
+        <!-- Bottom Controls -->
+        <div class="glass-panel w-full max-w-md mx-auto slide-in">
+            <div class="flex flex-col gap-4">
+                <div class="flex justify-between items-center">
+                    <div class="text-sm font-medium">JOURNEY PROGRESS</div>
+                    <div class="text-xs opacity-80">PHASE: <span id="phase-text">INITIALIZATION</span></div>
+                </div>
+                <div class="progress-track">
+                    <div id="progress-bar" class="progress-bar" style="width: 0%"></div>
+                </div>
+                
+                <div class="flex justify-between items-center gap-4">
+                    <button id="startBtn" class="control-btn active" data-tooltip="Begin journey">
+                        <i class="fas fa-play"></i>
+                        <span class="tooltip">Begin journey</span>
+                    </button>
+                    
+                    <button id="resetBtn" class="control-btn" data-tooltip="Reset simulation">
+                        <i class="fas fa-undo"></i>
+                        <span class="tooltip">Reset simulation</span>
+                    </button>
+                    
+                    <button id="autoPilot" class="control-btn" data-tooltip="Toggle autopilot">
+                        <i class="fas fa-robot"></i>
+                        <span class="tooltip">Toggle autopilot</span>
+                    </button>
+                    
+                    <button id="effectsBtn" class="control-btn" data-tooltip="Effects settings">
+                        <i class="fas fa-magic"></i>
+                        <span class="tooltip">Effects settings</span>
+                    </button>
+                    
+                    <button id="infoBtn" class="control-btn" data-tooltip="Information">
+                        <i class="fas fa-info-circle"></i>
+                        <span class="tooltip">Information</span>
+                    </button>
+                    
+                    <button id="destinationsBtn" class="control-btn" data-tooltip="Destinations">
+                        <i class="fas fa-map-marked-alt"></i>
+                        <span class="tooltip">Destinations</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Particle Legend (Bottom Left) -->
+        <div class="glass-panel absolute bottom-4 left-4 w-48">
+            <div class="text-xs font-medium mb-2">PARTICLE VISUALIZATION</div>
+            <div class="space-y-1">
+                <div class="flex items-center">
+                    <span class="particle-indicator bg-blue-500"></span>
+                    <span>Stars</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="particle-indicator bg-yellow-500"></span>
+                    <span>Sparks</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="particle-indicator bg-red-500"></span>
+                    <span>Explosions</span>
+                </div>
+                <div class="flex items-center">
+                    <span class="particle-indicator bg-gray-400"></span>
+                    <span>Debris</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- System Status (Bottom Right) -->
+        <div class="glass-panel absolute bottom-4 right-4 w-48">
+            <div class="text-xs font-medium mb-2">SYSTEM STATUS</div>
+            <div class="space-y-1 text-xs">
+                <div class="flex justify-between">
+                    <span>Wormhole Stability:</span>
+                    <span id="stability-status" class="text-green-400">Optimal</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Gravity Field:</span>
+                    <span id="gravity-status" class="text-blue-400">Balanced</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Radiation Levels:</span>
+                    <span id="radiation-status" class="text-yellow-400">Moderate</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Time Distortion:</span>
+                    <span id="time-status" class="text-purple-400">3.2x</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification System -->
+    <div id="notification" class="notification hidden">
+        <i class="fas fa-info-circle"></i>
+        <div>
+            <div class="font-medium">System Notification</div>
+            <div class="text-xs opacity-80" id="notification-message">Message content here</div>
+        </div>
+    </div>
+    
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content relative">
+            <button class="close-modal" id="closeSettings">&times;</button>
+            <h2 class="text-xl font-bold mb-4 neon-text">SIMULATION SETTINGS</h2>
+            
+            <div class="settings-option">
+                <div>
+                    <div class="font-medium">Particle Density</div>
+                    <div class="text-xs opacity-80">Adjust the number of visual particles</div>
+                </div>
+                <input type="range" min="1" max="100" value="50" class="range-slider" id="particleDensity">
+            </div>
+            
+            <div class="settings-option">
+                <div>
+                    <div class="font-medium">Warp Effects</div>
+                    <div class="text-xs opacity-80">Enable/disable visual warp effects</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="warpEffectsToggle" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            
+            <div class="settings-option">
+                <div>
+                    <div class="font-medium">Sound Effects</div>
+                    <div class="text-xs opacity-80">Enable/disable sound effects</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="soundEffectsToggle" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            
+            <div class="settings-option">
+                <div>
+                    <div class="font-medium">Motion Blur</div>
+                    <div class="text-xs opacity-80">Add motion blur during warp</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="motionBlurToggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            
+            <div class="settings-option">
+                <div>
+                    <div class="font-medium">Auto Camera</div>
+                    <div class="text-xs opacity-80">Automatically adjust camera during warp</div>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="autoCameraToggle" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            
+            <div class="mt-6">
+                <button id="saveSettings" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-2 px-4 rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all">
+                    SAVE SETTINGS
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Information Modal -->
+    <div id="infoModal" class="modal">
+        <div class="modal-content relative">
+            <button class="close-modal" id="closeInfo">&times;</button>
+            <h2 class="text-xl font-bold mb-4 neon-text">ABOUT COSMIC JOURNEY</h2>
+            
+            <div class="mb-4">
+                <p class="text-sm mb-2">Welcome to the Wormhole Simulator, an interactive experience that lets you travel through a theoretical Einstein-Rosen bridge.</p>
+                <p class="text-sm mb-2">This simulation demonstrates the visual and physical effects predicted to occur during wormhole traversal, including:</p>
+                <ul class="text-xs list-disc pl-5 mb-4">
+                    <li>Gravitational lensing</li>
+                    <li>Time dilation effects</li>
+                    <li>Cosmic particle interactions</li>
+                    <li>Warp field visualization</li>
+                </ul>
+                <p class="text-xs opacity-80">Version 2.1 | Quantum Physics Engine v3.4</p>
+            </div>
+            
+            <div class="border-t border-gray-700 pt-4">
+                <h3 class="font-medium mb-2">CONTROLS</h3>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 rounded-full bg-blue-900 flex items-center justify-center">
+                            <i class="fas fa-play text-xs"></i>
+                        </div>
+                        <span>Start Journey</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 rounded-full bg-purple-900 flex items-center justify-center">
+                            <i class="fas fa-undo text-xs"></i>
+                        </div>
+                        <span>Reset Simulation</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 rounded-full bg-green-900 flex items-center justify-center">
+                            <i class="fas fa-robot text-xs"></i>
+                        </div>
+                        <span>Autopilot</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 rounded-full bg-pink-900 flex items-center justify-center">
+                            <i class="fas fa-magic text-xs"></i>
+                        </div>
+                        <span>Effects</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4 border-t border-gray-700 pt-4">
+                <h3 class="font-medium mb-2">CREDITS</h3>
+                <p class="text-xs">Developed by Quantum Simulations Lab<br>
+                Using Three.js and WebGL<br>
+                © 2023 Cosmic Journey Project</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Destinations Modal -->
+    <div id="destinationsModal" class="modal">
+        <div class="modal-content relative">
+            <button class="close-modal" id="closeDestinations">&times;</button>
+            <h2 class="text-xl font-bold mb-4 neon-text">SELECT DESTINATION</h2>
+            
+            <div class="mb-4">
+                <p class="text-sm mb-4">Choose your cosmic destination from our catalog of theoretical wormhole endpoints.</p>
+                
+                <div class="destination-card active" data-destination="andromeda">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-medium">Andromeda Galaxy</h3>
+                            <p class="text-xs opacity-80">2.5 million light-years</p>
+                        </div>
+                        <i class="fas fa-check-circle text-blue-400"></i>
+                    </div>
+                    <div class="text-xs mt-2">
+                        <span class="text-yellow-400">Time dilation: 4.8x</span>
+                    </div>
+                </div>
+                
+                <div class="destination-card" data-destination="centaurus">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-medium">Centaurus A</h3>
+                            <p class="text-xs opacity-80">13 million light-years</p>
+                        </div>
+                        <i class="fas fa-lock text-gray-500"></i>
+                    </div>
+                    <div class="text-xs mt-2">
+                        <span class="text-yellow-400">Time dilation: 8.2x</span>
+                    </div>
+                </div>
+                
+                <div class="destination-card" data-destination="orion">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-medium">Orion Nebula</h3>
+                            <p class="text-xs opacity-80">1,344 light-years</p>
+                        </div>
+                        <i class="fas fa-lock text-gray-500"></i>
+                    </div>
+                    <div class="text-xs mt-2">
+                        <span class="text-yellow-400">Time dilation: 1.2x</span>
+                    </div>
+                </div>
+                
+                <div class="destination-card" data-destination="quasar">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-medium">3C 273 Quasar</h3>
+                            <p class="text-xs opacity-80">2.4 billion light-years</p>
+                        </div>
+                        <i class="fas fa-lock text-gray-500"></i>
+                    </div>
+                    <div class="text-xs mt-2">
+                        <span class="text-yellow-400">Time dilation: 12.7x</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4 text-xs opacity-80">
+                <p>Additional destinations unlock as you complete journeys.</p>
+            </div>
+            
+            <div class="mt-6">
+                <button id="confirmDestination" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-2 px-4 rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all">
+                    CONFIRM DESTINATION
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Main Three.js variables
+        let scene, camera, renderer, controls;
+        let wormhole, ship, particles = [];
+        let isAnimating = false;
+        let autoPilot = false;
+        let journeyProgress = 0;
+        let journeySpeed = 0.001;
+        let explosionParticles = [];
+        let debrisParticles = [];
+        let sparkParticles = [];
+        let starParticles = [];
+        let powerLevel = 87;
+        let selectedDestination = 'andromeda';
+        let settings = {
+            particleDensity: 50,
+            warpEffects: true,
+            soundEffects: true,
+            motionBlur: false,
+            autoCamera: true
+        };
+        // Initialize the scene
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a1a);
+            scene.fog = new THREE.FogExp2(0x0a0a1a, 0.002);
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+            camera.position.set(0, 0, 50);
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('canvas').appendChild(renderer.domElement);
+            // Add orbit controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            // Create lights
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 1);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            // Add colorful ambient light
+            const coloredLight1 = new THREE.PointLight(0x7b2dff, 0.5, 100);
+            coloredLight1.position.set(20, 20, 20);
+            scene.add(coloredLight1);
+            
+            const coloredLight2 = new THREE.PointLight(0x00f0ff, 0.5, 100);
+            coloredLight2.position.set(-20, -20, -20);
+            scene.add(coloredLight2);
+            // Create wormhole
+            createWormhole();
+            
+            // Create spaceship
+            createSpaceship();
+            // Create particles
+            createParticles();
+            // Add event listeners
+            window.addEventListener('resize', onWindowResize);
+            document.getElementById('startBtn').addEventListener('click', startJourney);
+            document.getElementById('resetBtn').addEventListener('click', resetScene);
+            document.getElementById('autoPilot').addEventListener('click', toggleAutoPilot);
+            document.getElementById('effectsBtn').addEventListener('click', openSettingsModal);
+            document.getElementById('infoBtn').addEventListener('click', openInfoModal);
+            document.getElementById('destinationsBtn').addEventListener('click', openDestinationsModal);
+            document.getElementById('closeSettings').addEventListener('click', closeSettingsModal);
+            document.getElementById('closeInfo').addEventListener('click', closeInfoModal);
+            document.getElementById('closeDestinations').addEventListener('click', closeDestinationsModal);
+            document.getElementById('saveSettings').addEventListener('click', saveSettings);
+            document.getElementById('confirmDestination').addEventListener('click', confirmDestination);
+            // Initialize UI elements
+            updateProgressBar();
+            updateHUD();
+            updatePowerLevel();
+            updateSystemStatus();
+            // Set up destination selection
+            setupDestinationSelection();
+            // Start animation loop
+            animate();
+        }
+        // Create wormhole geometry
+        function createWormhole() {
+            const geometry = new THREE.TorusGeometry(15, 3, 32, 100);
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x00aaff,
+                emissive: 0x0066ff,
+                emissiveIntensity: 0.8,
+                transparent: true,
+                opacity: 0.9,
+                wireframe: true,
+                wireframeLinewidth: 2
+            });
+            
+            wormhole = new THREE.Mesh(geometry, material);
+            wormhole.rotation.x = Math.PI / 2;
+            scene.add(wormhole);
+            // Add inner glow
+            const innerGlowGeometry = new THREE.SphereGeometry(12, 32, 32);
+            const innerGlowMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00aaff,
+                transparent: true,
+                opacity: 0.3
+            });
+            const innerGlow = new THREE.Mesh(innerGlowGeometry, innerGlowMaterial);
+            wormhole.add(innerGlow);
+            
+            // Add energy field
+            const energyFieldGeometry = new THREE.SphereGeometry(16, 64, 64);
+            const energyFieldMaterial = new THREE.MeshBasicMaterial({
+                color: 0x7b2dff,
+                transparent: true,
+                opacity: 0.05,
+                wireframe: true
+            });
+            const energyField = new THREE.Mesh(energyFieldGeometry, energyFieldMaterial);
+            wormhole.add(energyField);
+        }
+        // Create spaceship
+        function createSpaceship() {
+            const geometry = new THREE.ConeGeometry(1, 3, 8);
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xffffff,
+                emissive: 0xaaaaaa,
+                emissiveIntensity: 0.5,
+                specular: 0x111111,
+                shininess: 50
+            });
+            
+            ship = new THREE.Mesh(geometry, material);
+            ship.position.set(0, 0, -50);
+            ship.rotation.x = Math.PI / 2;
+            scene.add(ship);
+            // Add engine glow
+            const engineGlowGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const engineGlowMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ffff,
+                transparent: true,
+                opacity: 0.9
+            });
+            const engineGlow = new THREE.Mesh(engineGlowGeometry, engineGlowMaterial);
+            engineGlow.position.set(0, -1.5, 0);
+            ship.add(engineGlow);
+            
+            // Add engine trail
+            const trailGeometry = new THREE.CylinderGeometry(0.2, 0.8, 3, 8);
+            const trailMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00aaff,
+                transparent: true,
+                opacity: 0.6,
+                side: THREE.DoubleSide
+            });
+            const trail = new THREE.Mesh(trailGeometry, trailMaterial);
+            trail.position.set(0, -3, 0);
+            trail.rotation.x = Math.PI / 2;
+            ship.add(trail);
+        }
+        // Create various particles
+        function createParticles() {
+            // Stars background
+            const starGeometry = new THREE.BufferGeometry();
+            const starMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.2,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            const starPositions = [];
+            const starColors = [];
+            
+            for (let i = 0; i < 2000; i++) {
+                starPositions.push(
+                    Math.random() * 2000 - 1000,
+                    Math.random() * 2000 - 1000,
+                    Math.random() * 2000 - 1000
+                );
+                
+                // Add some color variation
+                const colorIntensity = 0.7 + Math.random() * 0.3;
+                starColors.push(
+                    colorIntensity,
+                    colorIntensity,
+                    colorIntensity
+                );
+            }
+            
+            starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+            starGeometry.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
+            
+            const stars = new THREE.Points(starGeometry, starMaterial);
+            scene.add(stars);
+            starParticles.push(stars);
+            // Debris
+            for (let i = 0; i < 150; i++) {
+                const size = 0.2 + Math.random() * 1.5;
+                const debris = new THREE.Mesh(
+                    new THREE.BoxGeometry(size, size, size),
+                    new THREE.MeshPhongMaterial({ 
+                        color: 0x888888,
+                        emissive: 0x333333,
+                        emissiveIntensity: 0.1
+                    })
+                );
+                debris.position.set(
+                    Math.random() * 100 - 50,
+                    Math.random() * 100 - 50,
+                    Math.random() * 100 - 50
+                );
+                debris.rotation.set(
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI
+                );
+                debris.userData = {
+                    velocity: new THREE.Vector3(
+                        Math.random() * 0.2 - 0.1,
+                        Math.random() * 0.2 - 0.1,
+                        Math.random() * 0.2 - 0.1
+                    ),
+                    rotationSpeed: new THREE.Vector3(
+                        Math.random() * 0.02 - 0.01,
+                        Math.random() * 0.02 - 0.01,
+                        Math.random() * 0.02 - 0.01
+                    )
+                };
+                scene.add(debris);
+                debrisParticles.push(debris);
+            }
+        }
+        // Create explosion effect
+        function createExplosion(position) {
+            const explosionGeometry = new THREE.BufferGeometry();
+            const explosionMaterial = new THREE.PointsMaterial({
+                size: 0.3,
+                vertexColors: true,
+                transparent: true,
+                blending: THREE.AdditiveBlending
+            });
+            
+            const explosionPositions = [];
+            const explosionColors = [];
+            const explosionSpeeds = [];
+            
+            for (let i = 0; i < 100; i++) {
+                explosionPositions.push(
+                    position.x,
+                    position.y,
+                    position.z
+                );
+                
+                // Color variation from yellow to red
+                const r = 0.8 + Math.random() * 0.2;
+                const g = 0.3 + Math.random() * 0.3;
+                const b = Math.random() * 0.2;
+                explosionColors.push(r, g, b);
+                
+                explosionSpeeds.push(
+                    Math.random() * 2 - 1,
+                    Math.random() * 2 - 1,
+                    Math.random() * 2 - 1
+                );
+            }
+            
+            explosionGeometry.setAttribute('position', new THREE.Float32BufferAttribute(explosionPositions, 3));
+            explosionGeometry.setAttribute('color', new THREE.Float32BufferAttribute(explosionColors, 3));
+            
+            const explosion = new THREE.Points(explosionGeometry, explosionMaterial);
+            explosion.userData = {
+                speeds: explosionSpeeds,
+                lifetime: 100 + Math.random() * 50,
+                age: 0
+            };
+            scene.add(explosion);
+            explosionParticles.push(explosion);
+            
+            // Play explosion sound (would be implemented with Howler.js in a real app)
+            if (settings.soundEffects) {
+                showNotification("Cosmic anomaly detected");
+            }
+        }
+        // Create spark effect
+        function createSparks(position) {
+            const sparkGeometry = new THREE.BufferGeometry();
+            const sparkMaterial = new THREE.PointsMaterial({
+                color: 0xffff00,
+                size: 0.1,
+                transparent: true,
+                blending: THREE.AdditiveBlending
+            });
+            
+            const sparkPositions = [];
+            const sparkSpeeds = [];
+            
+            for (let i = 0; i < 50; i++) {
+                sparkPositions.push(
+                    position.x,
+                    position.y,
+                    position.z
+                );
+                
+                sparkSpeeds.push(
+                    Math.random() * 0.5 - 0.25,
+                    Math.random() * 0.5 - 0.25,
+                    Math.random() * 0.5 - 0.25
+                );
+            }
+            
+            sparkGeometry.setAttribute('position', new THREE.Float32BufferAttribute(sparkPositions, 3));
+            
+            const sparks = new THREE.Points(sparkGeometry, sparkMaterial);
+            sparks.userData = {
+                speeds: sparkSpeeds,
+                lifetime: 50 + Math.random() * 30,
+                age: 0
+            };
+            scene.add(sparks);
+            sparkParticles.push(sparks);
+        }
+        // Bezier curve for smooth flight path
+        function getBezierPoint(t) {
+            // Control points for the bezier curve
+            const p0 = new THREE.Vector3(0, 0, -50);
+            const p1 = new THREE.Vector3(20, 30, -20);
+            const p2 = new THREE.Vector3(-10, 0, 10);
+            const p3 = new THREE.Vector3(0, 0, 50);
+            
+            // Cubic bezier formula
+            const point = new THREE.Vector3();
+            point.x = Math.pow(1 - t, 3) * p0.x + 
+                      3 * Math.pow(1 - t, 2) * t * p1.x + 
+                      3 * (1 - t) * Math.pow(t, 2) * p2.x + 
+                      Math.pow(t, 3) * p3.x;
+            point.y = Math.pow(1 - t, 3) * p0.y + 
+                      3 * Math.pow(1 - t, 2) * t * p1.y + 
+                      3 * (1 - t) * Math.pow(t, 2) * p2.y + 
+                      Math.pow(t, 3) * p3.y;
+            point.z = Math.pow(1 - t, 3) * p0.z + 
+                      3 * Math.pow(1 - t, 2) * t * p1.z + 
+                      3 * (1 - t) * Math.pow(t, 2) * p2.z + 
+                      Math.pow(t, 3) * p3.z;
+            
+            return point;
+        }
+        // Start the journey through the wormhole
+        function startJourney() {
+            if (!isAnimating) {
+                isAnimating = true;
+                journeyProgress = 0;
+                document.getElementById('startBtn').classList.add('active');
+                document.getElementById('phase-text').textContent = "ACCELERATION";
+                showNotification("Initiating warp sequence to " + getDestinationName(selectedDestination));
+                
+                // Activate warp effects if enabled
+                if (settings.warpEffects) {
+                    document.getElementById('warp-effect').classList.add('active');
+                }
+            }
+        }
+        // Reset the scene
+        function resetScene() {
+            isAnimating = false;
+            autoPilot = false;
+            journeyProgress = 0;
+            ship.position.set(0, 0, -50);
+            camera.position.set(0, 0, 50);
+            controls.reset();
+            document.getElementById('startBtn').classList.remove('active');
+            document.getElementById('autoPilot').classList.remove('active');
+            document.getElementById('phase-text').textContent = "INITIALIZATION";
+            document.getElementById('warp-effect').classList.remove('active');
+            updateProgressBar();
+            updateHUD();
+            updatePowerLevel();
+            updateSystemStatus();
+            showNotification("System reset complete");
+        }
+        // Toggle autopilot mode
+        function toggleAutoPilot() {
+            autoPilot = !autoPilot;
+            const btn = document.getElementById('autoPilot');
+            btn.classList.toggle('active');
+            btn.innerHTML = autoPilot ? '<i class="fas fa-user-astronaut"></i>' : '<i class="fas fa-robot"></i>';
+            showNotification(autoPilot ? "Autopilot engaged" : "Manual control activated");
+        }
+        // Show notification
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            const messageElement = document.getElementById('notification-message');
+            
+            messageElement.textContent = message;
+            notification.classList.remove('hidden');
+            
+            setTimeout(() => {
+                notification.classList.add('hidden');
+            }, 3000);
+        }
+        // Update progress bar
+        function updateProgressBar() {
+            const progressBar = document.getElementById('progress-bar');
+            progressBar.style.width = `${journeyProgress * 100}%`;
+            
+            // Update phase text based on progress
+            if (journeyProgress > 0.8) {
+                document.getElementById('phase-text').textContent = "DECELERATION";
+            } else if (journeyProgress > 0.6) {
+                document.getElementById('phase-text').textContent = "STABILIZATION";
+            } else if (journeyProgress > 0.3) {
+                document.getElementById('phase-text').textContent = "CRUISE";
+            } else if (journeyProgress > 0) {
+                document.getElementById('phase-text').textContent = "ACCELERATION";
+            }
+        }
+        // Update HUD elements
+        function updateHUD() {
+            // Update speed display
+            const speed = 0.7 + journeyProgress * 2.3;
+            document.getElementById('speed-display').textContent = speed.toFixed(1);
+            
+            // Update distance display
+            const distance = 1.4 + journeyProgress * 8.6;
+            document.getElementById('distance-display').textContent = distance.toFixed(1);
+            
+            // Update time dilation display
+            const timeDilation = 3.2 + journeyProgress * 6.8;
+            document.getElementById('time-dilation-display').textContent = timeDilation.toFixed(1);
+            document.getElementById('time-status').textContent = timeDilation.toFixed(1) + "x";
+        }
+        // Update power level with random fluctuations
+        function updatePowerLevel() {
+            if (isAnimating) {
+                // More dramatic fluctuations during warp
+                powerLevel = 80 + Math.sin(Date.now() * 0.002) * 10 + Math.random() * 5;
+            } else {
+                // Small fluctuations when idle
+                powerLevel = 85 + Math.sin(Date.now() * 0.001) * 2 + Math.random() * 2;
+            }
+            
+            // Ensure power level stays within bounds
+            powerLevel = Math.max(0, Math.min(100, powerLevel));
+            
+            // Update display
+            document.getElementById('power-level').textContent = Math.round(powerLevel) + "% POWER";
+            
+            // Color code based on level
+            const powerElement = document.getElementById('power-level');
+            if (powerLevel > 80) {
+                powerElement.className = "";
+                powerElement.classList.add("text-green-400");
+            } else if (powerLevel > 50) {
+                powerElement.className = "";
+                powerElement.classList.add("text-yellow-400");
+            } else {
+                powerElement.className = "";
+                powerElement.classList.add("text-red-400");
+            }
+        }
+        // Update system status with random fluctuations
+        function updateSystemStatus() {
+            if (isAnimating) {
+                // More dramatic status during warp
+                const stability = Math.sin(Date.now() * 0.001) * 0.3 + 0.7;
+                const gravity = Math.sin(Date.now() * 0.0015) * 0.4 + 0.6;
+                const radiation = Math.sin(Date.now() * 0.002) * 0.5 + 0.5;
+                
+                document.getElementById('stability-status').textContent = 
+                    stability > 0.8 ? "Optimal" : stability > 0.5 ? "Stable" : "Fluctuating";
+                document.getElementById('gravity-status').textContent = 
+                    gravity > 0.7 ? "Balanced" : gravity > 0.4 ? "Variable" : "Unstable";
+                document.getElementById('radiation-status').textContent = 
+                    radiation > 0.7 ? "High" : radiation > 0.4 ? "Moderate" : "Low";
+                
+                // Color coding
+                document.getElementById('stability-status').className = 
+                    stability > 0.8 ? "text-green-400" : stability > 0.5 ? "text-yellow-400" : "text-red-400";
+                document.getElementById('gravity-status').className = 
+                    gravity > 0.7 ? "text-blue-400" : gravity > 0.4 ? "text-yellow-400" : "text-red-400";
+                document.getElementById('radiation-status').className = 
+                    radiation > 0.7 ? "text-red-400" : radiation > 0.4 ? "text-yellow-400" : "text-green-400";
+            } else {
+                // Stable status when idle
+                document.getElementById('stability-status').textContent = "Optimal";
+                document.getElementById('gravity-status').textContent = "Balanced";
+                document.getElementById('radiation-status').textContent = "Low";
+                
+                // Color coding
+                document.getElementById('stability-status').className = "text-green-400";
+                document.getElementById('gravity-status').className = "text-blue-400";
+                document.getElementById('radiation-status').className = "text-green-400";
+            }
+        }
+        // Handle window resize
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        // Modal control functions
+        function openSettingsModal() {
+            document.getElementById('settingsModal').classList.add('active');
+            // Load current settings into form
+            document.getElementById('particleDensity').value = settings.particleDensity;
+            document.getElementById('warpEffectsToggle').checked = settings.warpEffects;
+            document.getElementById('soundEffectsToggle').checked = settings.soundEffects;
+            document.getElementById('motionBlurToggle').checked = settings.motionBlur;
+            document.getElementById('autoCameraToggle').checked = settings.autoCamera;
+        }
+        function closeSettingsModal() {
+            document.getElementById('settingsModal').classList.remove('active');
+        }
+        function openInfoModal() {
+            document.getElementById('infoModal').classList.add('active');
+        }
+        function closeInfoModal() {
+            document.getElementById('infoModal').classList.remove('active');
+        }
+        function openDestinationsModal() {
+            document.getElementById('destinationsModal').classList.add('active');
+        }
+        function closeDestinationsModal() {
+            document.getElementById('destinationsModal').classList.remove('active');
+        }
+        function saveSettings() {
+            settings.particleDensity = document.getElementById('particleDensity').value;
+            settings.warpEffects = document.getElementById('warpEffectsToggle').checked;
+            settings.soundEffects = document.getElementById('soundEffectsToggle').checked;
+            settings.motionBlur = document.getElementById('motionBlurToggle').checked;
+            settings.autoCamera = document.getElementById('autoCameraToggle').checked;
+            
+            closeSettingsModal();
+            showNotification("Settings saved successfully");
+        }
+        function setupDestinationSelection() {
+            const cards = document.querySelectorAll('.destination-card');
+            cards.forEach(card => {
+                card.addEventListener('click', function() {
+                    if (!this.classList.contains('active') && !this.querySelector('.fa-lock')) {
+                        // Remove active class from all cards
+                        cards.forEach(c => c.classList.remove('active'));
+                        // Add active class to clicked card
+                        this.classList.add('active');
+                        selectedDestination = this.dataset.destination;
+                    }
+                });
+            });
+        }
+        function confirmDestination() {
+            closeDestinationsModal();
+            showNotification(`Destination set to ${getDestinationName(selectedDestination)}`);
+        }
+        function getDestinationName(dest) {
+            const names = {
+                'andromeda': 'Andromeda Galaxy',
+                'centaurus': 'Centaurus A',
+                'orion': 'Orion Nebula',
+                'quasar': '3C 273 Quasar'
+            };
+            return names[dest] || 'Unknown Destination';
+        }
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            // Update controls
+            controls.update();
+            // Rotate wormhole with dynamic speed
+            wormhole.rotation.z += 0.005 + Math.sin(Date.now() * 0.001) * 0.002;
+            // Update debris particles
+            debrisParticles.forEach(debris => {
+                debris.position.add(debris.userData.velocity);
+                debris.rotation.x += debris.userData.rotationSpeed.x;
+                debris.rotation.y += debris.userData.rotationSpeed.y;
+                debris.rotation.z += debris.userData.rotationSpeed.z;
+                
+                // Wrap around if out of bounds
+                if (Math.abs(debris.position.x) > 100) debris.position.x = -debris.position.x;
+                if (Math.abs(debris.position.y) > 100) debris.position.y = -debris.position.y;
+                if (Math.abs(debris.position.z) > 100) debris.position.z = -debris.position.z;
+            });
+            // Update explosion particles
+            for (let i = explosionParticles.length - 1; i >= 0; i--) {
+                const explosion = explosionParticles[i];
+                const positions = explosion.geometry.attributes.position.array;
+                const speeds = explosion.userData.speeds;
+                
+                for (let j = 0; j < positions.length; j += 3) {
+                    positions[j] += speeds[j];
+                    positions[j+1] += speeds[j+1];
+                    positions[j+2] += speeds[j+2];
+                    
+                    // Slow down over time
+                    speeds[j] *= 0.98;
+                    speeds[j+1] *= 0.98;
+                    speeds[j+2] *= 0.98;
+                }
+                
+                explosion.geometry.attributes.position.needsUpdate = true;
+                explosion.userData.age++;
+                
+                // Fade out
+                explosion.material.opacity = 0.8 * (1 - explosion.userData.age / explosion.userData.lifetime);
+                
+                if (explosion.userData.age >= explosion.userData.lifetime) {
+                    scene.remove(explosion);
+                    explosionParticles.splice(i, 1);
+                }
+            }
+            // Update spark particles
+            for (let i = sparkParticles.length - 1; i >= 0; i--) {
+                const spark = sparkParticles[i];
+                const positions = spark.geometry.attributes.position.array;
+                const speeds = spark.userData.speeds;
+                
+                for (let j = 0; j < positions.length; j += 3) {
+                    positions[j] += speeds[j];
+                    positions[j+1] += speeds[j+1];
+                    positions[j+2] += speeds[j+2];
+                    
+                    // Slow down over time
+                    speeds[j] *= 0.95;
+                    speeds[j+1] *= 0.95;
+                    speeds[j+2] *= 0.95;
+                }
+                
+                spark.geometry.attributes.position.needsUpdate = true;
+                spark.userData.age++;
+                
+                // Fade out
+                spark.material.opacity = 0.8 * (1 - spark.userData.age / spark.userData.lifetime);
+                
+                if (spark.userData.age >= spark.userData.lifetime) {
+                    scene.remove(spark);
+                    sparkParticles.splice(i, 1);
+                }
+            }
+            // Randomly create explosions and sparks based on settings
+            if (Math.random() < 0.02 * (settings.particleDensity / 50)) {
+                createExplosion(new THREE.Vector3(
+                    Math.random() * 40 - 20,
+                    Math.random() * 40 - 20,
+                    Math.random() * 40 - 20
+                ));
+            }
+            
+            if (Math.random() < 0.05 * (settings.particleDensity / 50)) {
+                createSparks(new THREE.Vector3(
+                    Math.random() * 30 - 15,
+                    Math.random() * 30 - 15,
+                    Math.random() * 30 - 15
+                ));
+            }
+            // Animate ship through wormhole
+            if (isAnimating) {
+                journeyProgress += journeySpeed;
+                
+                if (journeyProgress >= 1) {
+                    journeyProgress = 1;
+                    isAnimating = false;
+                    document.getElementById('phase-text').textContent = "ARRIVAL";
+                    document.getElementById('warp-effect').classList.remove('active');
+                    showNotification(`Arrived at ${getDestinationName(selectedDestination)}`);
+                }
+                
+                const shipPos = getBezierPoint(journeyProgress);
+                ship.position.copy(shipPos);
+                
+                // Calculate direction for ship orientation
+                const nextPos = getBezierPoint(Math.min(journeyProgress + 0.01, 1));
+                const direction = new THREE.Vector3().subVectors(nextPos, shipPos).normalize();
+                ship.lookAt(nextPos);
+                
+                // Randomly adjust speed for more organic feel
+                journeySpeed = 0.001 + Math.sin(Date.now() * 0.001) * 0.0005;
+                
+                // Auto camera follow in autopilot mode
+                if (autoPilot && settings.autoCamera) {
+                    const cameraOffset = new THREE.Vector3(0, 5, -10);
+                    cameraOffset.applyQuaternion(ship.quaternion);
+                    camera.position.copy(ship.position).add(cameraOffset);
+                    camera.lookAt(ship.position);
+                }
+                
+                // Update UI elements
+                updateProgressBar();
+                updateHUD();
+            }
+            // Update power level and system status
+            updatePowerLevel();
+            updateSystemStatus();
+            renderer.render(scene, camera);
+        }
+        // Initialize the scene
+        init();
+    </script>
+</body>
+</html>
