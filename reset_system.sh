@@ -1,138 +1,118 @@
 #!/bin/bash
 
-# 初始化检查
-check_prerequisites() {
-    # 检查root权限
-    if [[ $EUID -eq 0 ]]; then
-        echo -e "\033[1;31m错误：本脚本不应以root权限执行\033[0m"
-        exit 1
-    fi
+# 颜色定义
+RED="\033[31m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+BLUE="\033[34m"
+CYAN="\033[36m"
+BOLD="\033[1m"
+RESET="\033[0m"
 
-    # 检查终端支持
-    if [[ -t 1 ]]; then
-        RED='\033[0;31m'
-        GREEN='\033[0;32m'
-        YELLOW='\033[0;33m'
-        BLUE='\033[0;34m'
-        CYAN='\033[0;36m'
-        NC='\033[0m'
-        SEPARATOR="$(printf '%*s' $(tput cols) | tr ' ' '═')"
-    else
-        RED='' GREEN='' YELLOW='' BLUE='' CYAN='' NC=''
-        SEPARATOR="================================================"
-    fi
+print_banner() {
+    echo -e "${CYAN}${BOLD}"
+    echo "==============================================="
+    echo "            系统重装初始化脚本                  "
+    echo "==============================================="
+    echo -e "${RESET}"
 }
 
-# 带时间戳的输出函数
-log() {
-    echo -e "[$(date +'%T')] $1"
+print_warning() {
+    echo -e "${YELLOW}${BOLD}⚠️  警告:${RESET}"
+    echo -e "${YELLOW}  该脚本将会彻底清空你的用户主目录（包括隐藏文件）"
+    echo -e "  并重置部分配置文件。请务必先备份重要数据！${RESET}"
+    echo
 }
 
-# 增强版确认对话框
-confirm_action() {
-    local attempts=0
-    while [[ $attempts -lt 2 ]]; do
-        echo -en "${YELLOW}⚠️  请输入 'RESET' 确认操作 (剩余尝试次数 $((2 - attempts))): ${NC}"
-        read -r CONFIRM_INPUT
-        if [[ "$CONFIRM_INPUT" == "RESET" ]]; then
-            return 0
-        fi
-        ((attempts++))
-    done
-    echo -e "${RED}错误：验证失败，终止操作${NC}"
+print_success() {
+    echo -e "${GREEN}${BOLD}✔ $1${RESET}"
+}
+
+print_error() {
+    echo -e "${RED}${BOLD}✘ $1${RESET}"
+}
+
+print_info() {
+    echo -e "${BLUE}ℹ️  $1${RESET}"
+}
+
+# 显示 Banner 和警告
+print_banner
+print_warning
+
+read -p "$(echo -e ${BOLD}确认继续执行脚本？输入 ${GREEN}yes${RESET}${BOLD} 或 ${GREEN}y${RESET}${BOLD} 确认，其他任意键退出: ${RESET})" CONFIRM
+CONFIRM_LOWER=$(echo "$CONFIRM" | tr '[:upper:]' '[:lower:]')
+if [[ "$CONFIRM_LOWER" != "yes" && "$CONFIRM_LOWER" != "y" ]]; then
+    print_error "已取消执行。"
     exit 1
-}
+fi
 
-# 安全备份函数
-safe_backup() {
-    local src=$1
-    local dest=$2
-    
-    if [[ ! -d "$src" ]]; then
-        log "${YELLOW}警告：源目录 $src 不存在${NC}"
-        return 1
-    fi
+USERNAME=$(whoami)
+DOMAIN_DIR=$(find /home/"$USERNAME"/domains/ -mindepth 1 -maxdepth 1 -type d | head -n 1)
+DOMAINS=$(basename "$DOMAIN_DIR")
 
-    mkdir -p "$dest" || {
-        log "${RED}错误：无法创建备份目录 $dest${NC}"
-        return 1
-    }
+ORIGINAL_HTML="/home/$USERNAME/domains/$DOMAINS/public_html"
+BACKUP_DIR="$HOME/.public_html_backup"
 
-    rsync -a --delete "$src/" "$dest/" && {
-        log "${GREEN}备份成功：$src → $dest${NC}"
-        return 0
-    } || {
-        log "${RED}错误：备份过程失败${NC}"
-        return 1
-    }
-}
+print_info "检测并备份 public_html 中..."
+if [ -d "$ORIGINAL_HTML" ]; then
+    mkdir -p "$BACKUP_DIR" 2>/dev/null
+    cp -a "$ORIGINAL_HTML" "$BACKUP_DIR/"
+    print_success "public_html 已备份到 $BACKUP_DIR"
+    BACKUPED=true
+else
+    print_error "未找到 $ORIGINAL_HTML，跳过备份"
+    BACKUPED=false
+fi
 
-# 主执行流程
-main() {
-    check_prerequisites
+print_info "开始清空用户主目录..."
+cd ~ || exit
+rm -rf .[^.]* * 2>/dev/null
+print_success "用户主目录清空完成。"
 
-    # 警告横幅
-    echo -e "${RED}$SEPARATOR"
-    echo "                ⚠️  危 险 操 作 警 告 ⚠️"
-    echo "$SEPARATOR"
-    echo -e "${YELLOW}此操作将："
-    echo -e "• 永久删除所有用户数据"
-    echo -e "• 重置系统配置到初始状态"
-    echo -e "• 不可逆操作，请谨慎选择！${NC}"
-    echo -e "${RED}$SEPARATOR${NC}"
+print_info "恢复默认配置文件..."
+if [ -f /etc/skel/.bashrc ]; then
+    cp /etc/skel/.bashrc ~/
+    print_success "恢复 /etc/skel/.bashrc"
+else
+    print_error "/etc/skel/.bashrc 不存在，跳过"
+fi
 
-    confirm_action
+if [ -f /etc/skel/.profile ]; then
+    cp /etc/skel/.profile ~/
+    print_success "恢复 /etc/skel/.profile"
+elif [ -f /etc/skel/.bash_profile ]; then
+    cp /etc/skel/.bash_profile ~/
+    print_success "恢复 /etc/skel/.bash_profile"
+else
+    print_error "未找到 /etc/skel/.profile 和 .bash_profile，跳过"
+fi
 
-    # 初始化环境
-    USERNAME=$(whoami)
-    DOMAIN_ROOT="/home/$USERNAME/domains"
-    
-    # 自动检测域名目录
-    DOMAIN_DIR=$(find "$DOMAIN_ROOT" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null)
-    if [[ -z "$DOMAIN_DIR" ]]; then
-        log "${YELLOW}警告：未找到域名目录，使用默认路径${NC}"
-        DOMAIN_DIR="$DOMAIN_ROOT/example.com"
-    fi
-    DOMAINS=$(basename "$DOMAIN_DIR")
+print_info "创建 .local/bin 并配置 PATH..."
+mkdir -p ~/.local/bin
+echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc
+print_success "PATH 配置写入 ~/.bashrc"
 
-    # 备份流程
-    log "${CYAN}正在执行安全备份...${NC}"
-    BACKUP_DIR="$HOME/system_backup_$(date +%Y%m%d_%H%M%S)"
-    safe_backup "$DOMAIN_DIR/public_html" "$BACKUP_DIR" || exit 1
+print_info "创建安全的临时目录..."
+mkdir -p "$HOME/tmp"
+chmod 700 "$HOME/tmp"
+echo 'export TMPDIR="$HOME/tmp"' >> ~/.bashrc
+print_success "临时目录 $HOME/tmp 已创建并配置"
 
-    # 安全清理流程
-    log "${YELLOW}开始系统清理...${NC}"
-    {
-        echo -e "${CYAN}安全删除用户文件...${NC}"
-        find ~/ -mindepth 1 -maxdepth 1 -not -name 'domains' -exec rm -rf {} +
-        
-        echo -e "${CYAN}重置配置文件...${NC}"
-        cp -f /etc/skel/.bashrc /etc/skel/.profile ~/
-        
-        echo -e "${CYAN}重建目录结构...${NC}"
-        mkdir -p ~/{.local/bin,tmp,domains}
-        chmod 700 ~/tmp
-    } 2>&1 | while read -r line; do log "$line"; done
+print_info "加载新的 bash 配置..."
+source ~/.bashrc
+print_success "bash 配置已加载"
 
-    # 恢复环境
-    log "${CYAN}恢复基础配置...${NC}"
-    {
-        echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc
-        echo 'export TMPDIR="$HOME/tmp"' >> ~/.bashrc
-        source ~/.bashrc
-    }
+print_info "还原 public_html 目录..."
+mkdir -p "/home/$USERNAME/domains/$DOMAINS/"
+if [ "$BACKUPED" = true ]; then
+    cp -a "$BACKUP_DIR/public_html" "/home/$USERNAME/domains/$DOMAINS/"
+    print_success "public_html 已从备份还原至 /home/$USERNAME/domains/$DOMAINS/"
+else
+    mkdir -p "/home/$USERNAME/domains/$DOMAINS/public_html"
+    print_success "已创建空 public_html 目录：/home/$USERNAME/domains/$DOMAINS/public_html"
+fi
 
-    # 完成提示
-    echo -e "${GREEN}$SEPARATOR"
-    echo "                系 统 重 置 完 成"
-    echo "$SEPARATOR"
-    echo -e "${CYAN}操作报告："
-    echo -e "• 备份位置: $BACKUP_DIR"
-    echo -e "• 清理文件: ~/ (保留 domains 目录)"
-    echo -e "• 配置恢复: /etc/skel 基础配置"
-    echo -e "${GREEN}$SEPARATOR${NC}"
-}
-
-# 异常处理
-trap 'echo -e "${RED}错误：用户中断操作${NC}"; exit 130' INT
-main "$@"
+echo
+print_success "系统重装脚本执行完成！🎉"
+echo -e "${CYAN}请重新登录或执行 'source ~/.bashrc' 以应用配置。${RESET}"
