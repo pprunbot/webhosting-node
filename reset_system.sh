@@ -69,12 +69,6 @@ else
     BACKUPED=false
 fi
 
-# 清空主目录
-print_info "开始清空用户主目录..."
-cd ~ || exit
-rm -rf .[^.]* * 2>/dev/null
-print_success "用户主目录清空完成。"
-
 # 恢复配置
 print_info "恢复默认配置文件..."
 [ -f /etc/skel/.bashrc ] && cp /etc/skel/.bashrc ~/ && print_success "恢复 /etc/skel/.bashrc"
