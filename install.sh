@@ -13,6 +13,7 @@ RESET='\033[0m'
 PROJECT_URL="https://github.com/pprunbot/webhosting-node"
 PACKAGE_MANAGER="npm"
 INSTALL_METHOD=1
+NODE_VERSION="v20.12.2"
 
 draw_line() {
   printf "%$(tput cols)s\n" | tr ' ' '─'
@@ -37,11 +38,40 @@ show_header() {
 
 USERNAME=$(whoami)
 
+# 系统检测函数
+detect_system() {
+  case "$(uname -s)" in
+    Linux*)   echo "linux" ;;
+    FreeBSD*) echo "freebsd" ;;
+    *)        echo "unknown" ;;
+  esac
+}
+
+# 架构检测
+detect_arch() {
+  case "$(uname -m)" in
+    x86_64)  echo "x64" ;;
+    aarch64) echo "arm64" ;;
+    *)       echo "unknown" ;;
+  esac
+}
+
+# Node.js预检查
+pre_check() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    if node -v >/dev/null 2>&1 && npm -v >/dev/null 2>&1; then
+      echo -e "${GREEN}✓ 检测到已安装Node.js和npm，跳过安装${RESET}"
+      return 0
+    fi
+  fi
+  return 1
+}
+
 main_menu() {
   show_header
   echo -e "${BOLD}${MAGENTA}主菜单：${RESET}"
   echo -e "  ${GREEN}1.${RESET} vless部署"
-  echo -e "  ${GREEN}2.${RESET} nezha安装" 
+  echo -e "  ${GREEN}2.${RESET} nezha安装"
   echo -e "  ${GREEN}3.${RESET} 卸载"
   echo -e "  ${GREEN}4.${RESET} 退出"
   draw_line
@@ -209,13 +239,30 @@ uninstall_menu() {
 }
 
 check_node() {
+  # 获取系统信息
+  sys_type=$(detect_system)
+  arch_type=$(detect_arch)
+  
   case $INSTALL_METHOD in
   1)
     echo -e "\n${BLUE}=== 方法1：官方安装 ===${RESET}"
+    
+    # 生成下载地址
+    case $sys_type in
+      linux)
+        pkg_name="node-${NODE_VERSION}-linux-${arch_type}.tar.gz" ;;
+      freebsd)
+        pkg_name="node-${NODE_VERSION}-freebsd-${arch_type}.tar.gz" ;;
+      *)
+        echo -e "${RED}不支持的系统类型: $sys_type${RESET}"
+        return 1 ;;
+    esac
+
+    base_url="https://nodejs.org/dist/${NODE_VERSION}"
     temp_dir=$(mktemp -d)
     pushd "$temp_dir" >/dev/null
 
-    if curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz && \
+    if curl -#fsSL "${base_url}/${pkg_name}" -o node.tar.gz && \
        tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node 2>/dev/null; then
       echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bashrc
       source ~/.bashrc
@@ -244,10 +291,17 @@ check_node() {
     cd ~/.local
     rm -rf node*
     
-    curl -#O https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz
-    tar -zxf node-v20.12.2-linux-x64.tar.gz
-    mv node-v20.12.2-linux-x64 node
-    rm node-v20.12.2-linux-x64.tar.gz
+    # FreeBSD特殊处理
+    if [ "$sys_type" = "freebsd" ]; then
+      pkg_name="node-${NODE_VERSION}-freebsd-${arch_type}.tar.gz"
+    else
+      pkg_name="node-${NODE_VERSION}-linux-${arch_type}.tar.gz"
+    fi
+
+    curl -#O "https://nodejs.org/dist/${NODE_VERSION}/${pkg_name}"
+    tar -zxf "$pkg_name"
+    mv node-* node
+    rm "$pkg_name"
 
     mkdir -p ~/.local/bin
     ln -sf ~/.local/node/bin/node ~/.local/bin/node
@@ -257,12 +311,18 @@ check_node() {
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
     source ~/.bashrc
 
-    curl -#L https://github.com/pnpm/pnpm/releases/download/v6.32.20/pnpm-linuxstatic-x64 -o ~/.local/bin/pnpm
-    chmod +x ~/.local/bin/pnpm
+    # 仅Linux安装pnpm
+    if [ "$sys_type" = "linux" ]; then
+      curl -#L https://github.com/pnpm/pnpm/releases/download/v6.32.20/pnpm-linuxstatic-x64 -o ~/.local/bin/pnpm
+      chmod +x ~/.local/bin/pnpm
+      check_cmd="pnpm -v"
+    else
+      check_cmd="npm -v"
+    fi
 
-    if node -v &>/dev/null && pnpm -v &>/dev/null; then
+    if node -v &>/dev/null && eval "$check_cmd" &>/dev/null; then
       echo -e "${GREEN}✓ 验证通过"
-      PACKAGE_MANAGER="pnpm"
+      [ "$sys_type" = "linux" ] && PACKAGE_MANAGER="pnpm" || PACKAGE_MANAGER="npm"
       return 0
     else
       echo -e "${RED}验证失败，切换方法"
@@ -297,11 +357,24 @@ check_node() {
 }
 
 start_installation() {
-  mkdir -p "$HOME/tmp"
-  chmod 700 "$HOME/tmp"
-  export TMPDIR="$HOME/tmp"
-  source ~/.bashrc
+  # 预检查
+  if pre_check; then
+    echo -e "${GREEN}✓ 使用现有Node.js环境${RESET}"
+  else
+    # 配置临时环境
+    mkdir -p "$HOME/tmp"
+    chmod 700 "$HOME/tmp"
+    export TMPDIR="$HOME/tmp"
+    source ~/.bashrc
 
+    # 安装Node.js
+    check_node || {
+      echo -e "${RED}Node.js环境初始化失败，请检查日志！${RESET}"
+      exit 1
+    }
+  fi
+
+  # 创建项目目录并下载文件
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
   mkdir -p $PROJECT_DIR
   cd $PROJECT_DIR
@@ -313,8 +386,7 @@ start_installation() {
     curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
   done
 
-  check_node
-
+  # 安装PM2
   echo -e "\n${BLUE}正在安装PM2...${RESET}"
   if $PACKAGE_MANAGER install -g pm2; then
     echo -e "${GREEN}✓ PM2安装成功"
@@ -322,6 +394,7 @@ start_installation() {
     echo -e "${YELLOW}⚠ PM2安装失败，继续安装依赖"
   fi
 
+  # 安装依赖
   echo -e "\n${BLUE}正在安装依赖...${RESET}"
   if $PACKAGE_MANAGER install; then
     echo -e "${GREEN}✓ 依赖安装成功"
@@ -336,6 +409,7 @@ start_installation() {
     esac
   fi
 
+  # 应用配置
   sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
   sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
   sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
