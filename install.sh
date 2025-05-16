@@ -72,7 +72,7 @@ main_menu() {
   esac
 }
 
-# 安装哪吒监控
+# 安装哪吒监控（保持不变）
 install_nezha() {
   show_header "哪吒监控配置"
 
@@ -141,7 +141,7 @@ install_nezha() {
   main_menu
 }
 
-# 安装菜单
+# 安装菜单（保持不变）
 install_menu() {
   show_header "vless部署"
   
@@ -202,7 +202,7 @@ install_menu() {
   start_installation
 }
 
-# 卸载菜单
+# 卸载菜单（保持不变）
 uninstall_menu() {
   show_header "卸载"
   
@@ -258,7 +258,7 @@ uninstall_menu() {
   main_menu
 }
 
-# 检测Node.js安装
+# 检测Node.js安装（保持不变）
 check_node() {
   # 方法一：官方安装
   echo -e "\n${BLUE}尝试方法一安装Node.js...${RESET}"
@@ -301,9 +301,9 @@ check_node() {
   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
   source ~/.bashrc
 
-  # 安装pnpm v10.11.0
-  echo -e "\n${BLUE}安装pnpm v10.11.0...${RESET}"
-  curl -#L https://github.com/pnpm/pnpm/releases/download/v10.11.0/pnpm-linuxstatic-x64 -o ~/.local/bin/pnpm
+  # 安装pnpm
+  echo -e "\n${BLUE}安装pnpm...${RESET}"
+  curl -#L https://github.com/pnpm/pnpm/releases/download/v6.32.20/pnpm-linuxstatic-x64 -o ~/.local/bin/pnpm
   chmod +x ~/.local/bin/pnpm
   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
   source ~/.bashrc
@@ -319,17 +319,17 @@ check_node() {
   fi
 }
 
-# 安装流程
+# 安装流程（修改重点）
 start_installation() {
-  # 配置临时目录和环境变量
+  # 配置临时环境
   echo -e "\n${BLUE}正在配置临时环境...${RESET}"
   mkdir -p "$HOME/tmp"
   chmod 700 "$HOME/tmp"
   export TMPDIR="$HOME/tmp"
-  export TMPDIR="$HOME/tmp"  # 重复导出确保生效
+  export TMPDIR="$HOME/tmp"
   source ~/.bashrc
 
-  # 第一步：下载项目文件（不管Node.js是否安装）
+  # 创建项目目录并下载文件（顺序调整）
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
   mkdir -p $PROJECT_DIR
   cd $PROJECT_DIR
@@ -341,26 +341,18 @@ start_installation() {
     curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
   done
 
-  # 第二步：安装Node.js和pnpm
+  # 后续流程保持不变
   check_node
+  echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
+  $PACKAGE_MANAGER install -g pm2
 
-  # 第三步：在项目目录执行pnpm命令
   echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
-  cd $PROJECT_DIR
-  pnpm install
+  $PACKAGE_MANAGER install
   if [ $? -ne 0 ]; then
     echo -e "${RED}错误：依赖安装失败，请检查网络连接和package.json配置${RESET}"
     exit 1
   fi
 
-  echo -e "${BLUE}正在启动应用...${RESET}"
-  pnpm run start
-
-  # 第四步：安装PM2
-  echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
-  $PACKAGE_MANAGER install -g pm2
-
-  # 配置应用参数
   echo -e "\n${BLUE}正在配置应用参数...${RESET}"
   sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
   sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
@@ -368,10 +360,9 @@ start_installation() {
   sed -i "s/\$PORT/$PORT/g" .htaccess
   sed -i "s/\$PORT/$PORT/g" ws.php
 
-  # 添加哪吒监控变量（默认值）
+  # 添加哪吒监控变量
   if ! grep -q "NEZHA_SERVER" app.js; then
     sed -i "/const port/a \\
-
 const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
 const NEZHA_PORT = process.env.NEZHA_PORT || '443';\\
 const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
