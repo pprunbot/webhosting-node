@@ -1,9 +1,6 @@
-#!/bin/bash  
-
-# 退出脚本执行错误
+#!/bin/bash
 set -e
 
-# 颜色定义
 RED='\033[31m'
 GREEN='\033[32m'
 YELLOW='\033[33m'
@@ -13,18 +10,14 @@ CYAN='\033[36m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-# 项目信息
 PROJECT_URL="https://github.com/pprunbot/webhosting-node"
-
-# 包管理器标志
 PACKAGE_MANAGER="npm"
+INSTALL_METHOD=1
 
-# 绘制分隔线
 draw_line() {
   printf "%$(tput cols)s\n" | tr ' ' '─'
 }
 
-# 绘制美化标题
 print_title() {
   echo -e "${GREEN}${BOLD}"
   echo " __        __   _     _           _           _   _           _       _             "
@@ -36,24 +29,19 @@ print_title() {
   echo -e "${RESET}"
 }
 
-# 显示项目信息
 show_header() {
   clear
   print_title
   echo -e "${CYAN}项目地址: ${YELLOW}${PROJECT_URL}${RESET}\n"
 }
 
-# 获取当前用户名
 USERNAME=$(whoami)
 
-# 初始界面
-show_header "WebHosting Node 管理工具"
-
-# 主菜单
 main_menu() {
+  show_header
   echo -e "${BOLD}${MAGENTA}主菜单：${RESET}"
   echo -e "  ${GREEN}1.${RESET} vless部署"
-  echo -e "  ${GREEN}2.${RESET} nezha安装"
+  echo -e "  ${GREEN}2.${RESET} nezha安装" 
   echo -e "  ${GREEN}3.${RESET} 卸载"
   echo -e "  ${GREEN}4.${RESET} 退出"
   draw_line
@@ -72,45 +60,38 @@ main_menu() {
   esac
 }
 
-# 安装哪吒监控（保持不变）
 install_nezha() {
-  show_header "哪吒监控配置"
-
-  # 查找所有部署的应用
+  show_header
   DOMAINS_DIR="/home/$USERNAME/domains"
   INSTALLED_APPS=()
   for domain in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
-    if [ -f "$DOMAINS_DIR/$domain/public_html/app.js" ]; then
-      INSTALLED_APPS+=("$domain")
-    fi
+    [ -f "$DOMAINS_DIR/$domain/public_html/app.js" ] && INSTALLED_APPS+=("$domain")
   done
 
-  if [ ${#INSTALLED_APPS[@]} -eq 0 ]; then
+  [ ${#INSTALLED_APPS[@]} -eq 0 ] && {
     echo -e "${RED}未找到已部署的应用，请先执行vless部署!${RESET}"
     sleep 2
     main_menu
     return
-  fi
+  }
 
-  # 显示应用选择菜单
   echo -e "${BOLD}${BLUE}选择要配置的应用:${RESET}"
   for i in "${!INSTALLED_APPS[@]}"; do
     printf "${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${INSTALLED_APPS[$i]}"
   done
 
   read -p "$(echo -e "${BOLD}${CYAN}请输入数字选择 [1-${#INSTALLED_APPS[@]}]: ${RESET}")" APP_INDEX
-  if [[ ! $APP_INDEX =~ ^[0-9]+$ ]] || [ $APP_INDEX -lt 1 ] || [ $APP_INDEX -gt ${#INSTALLED_APPS[@]} ]; then
+  [[ ! $APP_INDEX =~ ^[0-9]+$ ]] || [ $APP_INDEX -lt 1 ] || [ $APP_INDEX -gt ${#INSTALLED_APPS[@]} ] && {
     echo -e "${RED}无效的选择!${RESET}"
     sleep 1
     main_menu
     return
-  fi
+  }
 
   SELECTED_DOMAIN=${INSTALLED_APPS[$((APP_INDEX-1))]}
   APP_DIR="$DOMAINS_DIR/$SELECTED_DOMAIN/public_html"
   cd "$APP_DIR"
 
-  # 获取哪吒配置参数
   echo -e "\n${BOLD}${CYAN}请输入哪吒监控配置 (全部填写才生效):${RESET}"
   read -p "$(echo -e "  ${CYAN}哪吒服务器地址 [默认 nezha.gvkoyeb.eu.org]: ${RESET}")" NEZHA_SERVER
   NEZHA_SERVER=${NEZHA_SERVER:-nezha.gvkoyeb.eu.org}
@@ -118,109 +99,84 @@ install_nezha() {
   NEZHA_PORT=${NEZHA_PORT:-443}
   read -p "$(echo -e "  ${CYAN}哪吒通信密钥 (必填): ${RESET}")" NEZHA_KEY
 
-  # 验证参数
-  if [[ -z "$NEZHA_SERVER" || -z "$NEZHA_PORT" || -z "$NEZHA_KEY" ]]; then
+  [ -z "$NEZHA_KEY" ] && {
     echo -e "${RED}错误：必须填写所有参数才能启用哪吒监控!${RESET}"
     sleep 2
     main_menu
     return
-  fi
+  }
 
-  # 修改app.js配置
   sed -i "s|const NEZHA_SERVER = process.env.NEZHA_SERVER || '.*';|const NEZHA_SERVER = process.env.NEZHA_SERVER || '${NEZHA_SERVER}';|" app.js
   sed -i "s|const NEZHA_PORT = process.env.NEZHA_PORT || '.*';|const NEZHA_PORT = process.env.NEZHA_PORT || '${NEZHA_PORT}';|" app.js
   sed -i "s|const NEZHA_KEY = process.env.NEZHA_KEY || '.*';|const NEZHA_KEY = process.env.NEZHA_KEY || '${NEZHA_KEY}';|" app.js
 
-  # 重启服务并保存
   echo -e "${BLUE}正在重启应用服务...${RESET}"
   pm2 restart "my-app-${SELECTED_DOMAIN}" --silent
   pm2 save
-
   echo -e "${GREEN}✓ 哪吒监控已成功启用!${RESET}"
   sleep 2
   main_menu
 }
 
-# 安装菜单（保持不变）
 install_menu() {
-  show_header "vless部署"
-  
-  # 检测域名目录
+  show_header
   DOMAINS_DIR="/home/$USERNAME/domains"
-  if [ ! -d "$DOMAINS_DIR" ]; then
+  [ ! -d "$DOMAINS_DIR" ] && {
     echo -e "${RED}错误：未找到域名目录 ${DOMAINS_DIR}${RESET}"
     exit 1
-  fi
+  }
 
-  # 获取可用域名列表
   DOMAINS=($(ls -d $DOMAINS_DIR/*/ | xargs -n1 basename))
-  if [ ${#DOMAINS[@]} -eq 0 ]; then
+  [ ${#DOMAINS[@]} -eq 0 ] && {
     echo -e "${RED}错误：未找到任何域名配置${RESET}"
     exit 1
-  fi
+  }
 
-  # 显示域名选择菜单
   echo -e "${BOLD}${BLUE}可用域名列表：${RESET}"
   for i in "${!DOMAINS[@]}"; do
     printf "${GREEN}%2d)${RESET} %s\n" "$((i+1))" "${DOMAINS[$i]}"
   done
 
-  # 获取用户选择的域名
-  echo ""
   read -p "$(echo -e "${BOLD}${CYAN}请选择域名（输入数字）[默认1]: ${RESET}")" DOMAIN_INDEX
   DOMAIN_INDEX=${DOMAIN_INDEX:-1}
-  if [[ ! $DOMAIN_INDEX =~ ^[0-9]+$ ]] || [ $DOMAIN_INDEX -lt 1 ] || [ $DOMAIN_INDEX -gt ${#DOMAINS[@]} ]; then
+  [[ ! $DOMAIN_INDEX =~ ^[0-9]+$ ]] || [ $DOMAIN_INDEX -lt 1 ] || [ $DOMAIN_INDEX -gt ${#DOMAINS[@]} ] && {
     echo -e "${RED}无效的选择${RESET}"
     exit 1
-  fi
+  }
 
   DOMAIN=${DOMAINS[$((DOMAIN_INDEX-1))]}
   echo -e "\n${GREEN}✓ 已选择域名: ${YELLOW}${DOMAIN}${RESET}"
 
-  # 自定义端口输入
-  draw_line
-  echo ""
   read -p "$(echo -e "${BOLD}${CYAN}请输入端口号 [默认4000]: ${RESET}")" PORT
   PORT=${PORT:-4000}
-
-  # 验证端口号
-  if [[ ! $PORT =~ ^[0-9]+$ ]] || [ $PORT -lt 1 ] || [ $PORT -gt 65535 ]; then
+  [[ ! $PORT =~ ^[0-9]+$ ]] || [ $PORT -lt 1 ] || [ $PORT -gt 65535 ] && {
     echo -e "${RED}无效的端口号${RESET}"
     exit 1
-  fi
+  }
 
-  # UUID输入
-  draw_line
-  echo ""
   read -p "$(echo -e "${BOLD}${CYAN}请输入UUID [默认随机生成]: ${RESET}")" UUID
-  if [ -z "$UUID" ]; then
+  [ -z "$UUID" ] && {
     UUID=$(cat /proc/sys/kernel/random/uuid)
     echo -e "${GREEN}✓ 已生成随机UUID: ${YELLOW}${UUID}${RESET}"
-  fi
+  }
 
-  # 开始部署流程
   start_installation
 }
 
-# 卸载菜单（保持不变）
 uninstall_menu() {
-  show_header "卸载"
-  
-  # 获取已部署项目
+  show_header
   DOMAINS_DIR="/home/$USERNAME/domains"
   INSTALLED=()
   for domain in $(ls -d $DOMAINS_DIR/*/ 2>/dev/null | xargs -n1 basename); do
-    if [ -d "$DOMAINS_DIR/$domain/public_html" ]; then
-      INSTALLED+=("$domain")
-    fi
+    [ -d "$DOMAINS_DIR/$domain/public_html" ] && INSTALLED+=("$domain")
   done
 
-  if [ ${#INSTALLED[@]} -eq 0 ]; then
+  [ ${#INSTALLED[@]} -eq 0 ] && {
     echo -e "${YELLOW}没有找到可卸载的项目${RESET}"
     sleep 2
     main_menu
     return
-  fi
+  }
 
   echo -e "${BOLD}${RED}⚠ 警告：这将永久删除项目数据！${RESET}\n"
   echo -e "${BOLD}${BLUE}已部署项目列表：${RESET}"
@@ -228,108 +184,124 @@ uninstall_menu() {
     printf "${RED}%2d)${RESET} %s\n" "$((i+1))" "${INSTALLED[$i]}"
   done
 
-  echo ""
   read -p "$(echo -e "${BOLD}${CYAN}请选择要卸载的项目 [1-${#INSTALLED[@]}]: ${RESET}")" UNINSTALL_INDEX
-  if [[ ! $UNINSTALL_INDEX =~ ^[0-9]+$ ]] || [ $UNINSTALL_INDEX -lt 1 ] || [ $UNINSTALL_INDEX -gt ${#INSTALLED[@]} ]; then
+  [[ ! $UNINSTALL_INDEX =~ ^[0-9]+$ ]] || [ $UNINSTALL_INDEX -lt 1 ] || [ $UNINSTALL_INDEX -gt ${#INSTALLED[@]} ] && {
     echo -e "${RED}无效的选择${RESET}"
     exit 1
-  fi
+  }
 
   SELECTED_DOMAIN=${INSTALLED[$((UNINSTALL_INDEX-1))]}
   
-  # 确认操作
   read -p "$(echo -e "${BOLD}${RED}确认要卸载 ${SELECTED_DOMAIN} 吗？[y/N]: ${RESET}")" CONFIRM
-  if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
+  [[ ! $CONFIRM =~ ^[Yy]$ ]] && {
     echo -e "${YELLOW}已取消卸载操作${RESET}"
     exit 0
-  fi
+  }
 
-  # 执行卸载
   echo -e "\n${BLUE}正在停止PM2服务...${RESET}"
   pm2 stop "my-app-${SELECTED_DOMAIN}" || true
   pm2 delete "my-app-${SELECTED_DOMAIN}" || true
   pm2 save
-
-  echo -e "${BLUE}正在清理项目文件...${RESET}"
   rm -rf "${DOMAINS_DIR}/${SELECTED_DOMAIN}/public_html"
-
   echo -e "\n${GREEN}✓ ${SELECTED_DOMAIN} 已成功卸载${RESET}"
   sleep 2
   main_menu
 }
 
-# 检测Node.js安装（保持不变）
 check_node() {
-  # 方法一：官方安装
-  echo -e "\n${BLUE}尝试方法一安装Node.js...${RESET}"
-  temp_dir=$(mktemp -d)
-  pushd "$temp_dir" >/dev/null
+  case $INSTALL_METHOD in
+  1)
+    echo -e "\n${BLUE}=== 方法1：官方安装 ===${RESET}"
+    temp_dir=$(mktemp -d)
+    pushd "$temp_dir" >/dev/null
 
-  if curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz && \
-     tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node 2>/dev/null; then
-    echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bashrc
-    source ~/.bashrc
-    rm -rf "$temp_dir"
+    if curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz && \
+       tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node 2>/dev/null; then
+      echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bashrc
+      source ~/.bashrc
+      rm -rf "$temp_dir"
+      
+      if node -v &>/dev/null && npm -v &>/dev/null; then
+        echo -e "${GREEN}✓ Node.js验证通过"
+        PACKAGE_MANAGER="npm"
+        return 0
+      else
+        echo -e "${RED}验证失败，切换方法"
+        rm -rf ~/.local/node
+        INSTALL_METHOD=2
+        check_node
+      fi
+    else
+      echo -e "${RED}安装失败，切换方法"
+      INSTALL_METHOD=2
+      check_node
+    fi
+    ;;
+
+  2)
+    echo -e "\n${BLUE}=== 方法2：手动安装 ===${RESET}"
+    mkdir -p ~/.local
+    cd ~/.local
+    rm -rf node*
     
-    # 验证安装
+    curl -#O https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz
+    tar -zxf node-v20.12.2-linux-x64.tar.gz
+    mv node-v20.12.2-linux-x64 node
+    rm node-v20.12.2-linux-x64.tar.gz
+
+    mkdir -p ~/.local/bin
+    ln -sf ~/.local/node/bin/node ~/.local/bin/node
+    ln -sf ~/.local/node/bin/npm ~/.local/bin/npm
+    ln -sf ~/.local/node/bin/npx ~/.local/bin/npx
+
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    source ~/.bashrc
+
+    curl -#L https://github.com/pnpm/pnpm/releases/download/v6.32.20/pnpm-linuxstatic-x64 -o ~/.local/bin/pnpm
+    chmod +x ~/.local/bin/pnpm
+
+    if node -v &>/dev/null && pnpm -v &>/dev/null; then
+      echo -e "${GREEN}✓ 验证通过"
+      PACKAGE_MANAGER="pnpm"
+      return 0
+    else
+      echo -e "${RED}验证失败，切换方法"
+      rm -rf ~/.local/node
+      INSTALL_METHOD=3
+      check_node
+    fi
+    ;;
+
+  3)
+    echo -e "\n${BLUE}=== 方法3：Volta安装 ===${RESET}"
+    mkdir -p "$HOME/tmp"
+    chmod 700 "$HOME/tmp"
+    export TMPDIR="$HOME/tmp"
+    source ~/.bashrc
+    
+    curl -# https://get.volta.sh | bash
+    source ~/.bashrc
+    volta install node
+    volta install npm
+
     if node -v &>/dev/null && npm -v &>/dev/null; then
-      echo -e "${GREEN}✓ Node.js安装成功${RESET}"
+      echo -e "${GREEN}✓ 验证通过"
       PACKAGE_MANAGER="npm"
       return 0
+    else
+      echo -e "${RED}所有安装方法均失败，请手动安装！${RESET}"
+      exit 1
     fi
-  fi
-
-  # 方法一失败，清理残留
-  echo -e "${RED}方法一安装失败，尝试方法二...${RESET}"
-  rm -rf ~/.local/node node.tar.gz "$temp_dir"
-  popd >/dev/null
-
-  # 方法二：手动安装
-  echo -e "\n${BLUE}使用方法二安装Node.js...${RESET}"
-  mkdir -p ~/.local
-  cd ~/.local
-  curl -#O https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz
-  tar -zxf node-v20.12.2-linux-x64.tar.gz
-  mv node-v20.12.2-linux-x64 node
-  rm node-v20.12.2-linux-x64.tar.gz
-
-  mkdir -p ~/.local/bin
-  ln -sf ~/.local/node/bin/node ~/.local/bin/node
-  ln -sf ~/.local/node/bin/npm ~/.local/bin/npm
-  ln -sf ~/.local/node/bin/npx ~/.local/bin/npx
-
-  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-  source ~/.bashrc
-
-  # 安装pnpm
-  echo -e "\n${BLUE}安装pnpm...${RESET}"
-  curl -#L https://github.com/pnpm/pnpm/releases/download/v6.32.20/pnpm-linuxstatic-x64 -o ~/.local/bin/pnpm
-  chmod +x ~/.local/bin/pnpm
-  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-  source ~/.bashrc
-
-  # 验证安装
-  if node -v &>/dev/null && pnpm -v &>/dev/null; then
-    PACKAGE_MANAGER="pnpm"
-    echo -e "${GREEN}✓ Node.js和pnpm安装成功${RESET}"
-    return 0
-  else
-    echo -e "${RED}Node.js/pnpm安装失败，请手动安装！${RESET}"
-    exit 1
-  fi
+    ;;
+  esac
 }
 
-# 安装流程（修改重点）
 start_installation() {
-  # 配置临时环境
-  echo -e "\n${BLUE}正在配置临时环境...${RESET}"
   mkdir -p "$HOME/tmp"
   chmod 700 "$HOME/tmp"
   export TMPDIR="$HOME/tmp"
-  export TMPDIR="$HOME/tmp"
   source ~/.bashrc
 
-  # 创建项目目录并下载文件（顺序调整）
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
   mkdir -p $PROJECT_DIR
   cd $PROJECT_DIR
@@ -341,26 +313,35 @@ start_installation() {
     curl -#fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/$file -O
   done
 
-  # 后续流程保持不变
   check_node
-  echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
-  $PACKAGE_MANAGER install -g pm2
 
-  echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
-  $PACKAGE_MANAGER install
-  if [ $? -ne 0 ]; then
-    echo -e "${RED}错误：依赖安装失败，请检查网络连接和package.json配置${RESET}"
-    exit 1
+  echo -e "\n${BLUE}正在安装PM2...${RESET}"
+  if $PACKAGE_MANAGER install -g pm2; then
+    echo -e "${GREEN}✓ PM2安装成功"
+  else
+    echo -e "${YELLOW}⚠ PM2安装失败，继续安装依赖"
   fi
 
-  echo -e "\n${BLUE}正在配置应用参数...${RESET}"
+  echo -e "\n${BLUE}正在安装依赖...${RESET}"
+  if $PACKAGE_MANAGER install; then
+    echo -e "${GREEN}✓ 依赖安装成功"
+    echo -e "${YELLOW}可手动执行：cd $PROJECT_DIR && $PACKAGE_MANAGER start"
+    main_menu
+  else
+    echo -e "${RED}依赖安装失败"
+    case $INSTALL_METHOD in
+      1) INSTALL_METHOD=2; check_node ;;
+      2) INSTALL_METHOD=3; check_node ;;
+      3) exit 1 ;;
+    esac
+  fi
+
   sed -i "s/const DOMAIN = process.env.DOMAIN || '.*';/const DOMAIN = process.env.DOMAIN || '$DOMAIN';/" app.js
   sed -i "s/const UUID = process.env.UUID || '.*';/const UUID = process.env.UUID || '$UUID';/" app.js
   sed -i "s/const port = process.env.PORT || .*;/const port = process.env.PORT || $PORT;/" app.js
   sed -i "s/\$PORT/$PORT/g" .htaccess
   sed -i "s/\$PORT/$PORT/g" ws.php
 
-  # 添加哪吒监控变量
   if ! grep -q "NEZHA_SERVER" app.js; then
     sed -i "/const port/a \\
 const NEZHA_SERVER = process.env.NEZHA_SERVER || 'nezha.gvkoyeb.eu.org';\\
@@ -369,10 +350,8 @@ const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
 " app.js
   fi
 
-  echo -e "\n${BLUE}正在启动PM2服务...${RESET}"
   pm2 start app.js --name "my-app-${DOMAIN}"
   pm2 save
-
   (crontab -l 2>/dev/null; echo "@reboot sleep 30 && $(which pm2) resurrect --no-daemon") | crontab -
 
   draw_line
@@ -386,5 +365,4 @@ const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
   echo ""
 }
 
-# 启动主菜单
 main_menu
