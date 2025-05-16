@@ -321,6 +321,14 @@ check_node() {
 
 # 安装流程
 start_installation() {
+  # 新增：配置临时目录和环境变量
+  echo -e "\n${BLUE}正在配置临时环境...${RESET}"
+  mkdir -p "$HOME/tmp"
+  chmod 700 "$HOME/tmp"
+  export TMPDIR="$HOME/tmp"
+  export TMPDIR="$HOME/tmp"  # 重复导出确保生效
+  source ~/.bashrc
+
   check_node
   echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
   $PACKAGE_MANAGER install -g pm2
