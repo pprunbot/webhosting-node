@@ -16,6 +16,9 @@ RESET='\033[0m'
 # 项目信息
 PROJECT_URL="https://github.com/pprunbot/webhosting-node"
 
+# 包管理器标志
+PACKAGE_MANAGER="npm"
+
 # 绘制分隔线
 draw_line() {
   printf "%$(tput cols)s\n" | tr ' ' '─'
@@ -257,24 +260,61 @@ uninstall_menu() {
 
 # 检测Node.js安装
 check_node() {
-  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "\n${BLUE}正在安装Node.js...${RESET}"
-    
-    mkdir -p ~/.local/node
-    echo -e "${CYAN}▶ 下载Node.js运行环境...${RESET}"
-    curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz
-    echo -e "\n${CYAN}▶ 解压文件...${RESET}"
-    tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node
-    echo -e "\n${CYAN}▶ 配置环境变量...${RESET}"
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bashrc
-    echo 'export PATH=$HOME/.local/node/bin:$PATH' >> ~/.bash_profile
+  # 方法一：官方安装
+  echo -e "\n${BLUE}尝试方法一安装Node.js...${RESET}"
+  temp_dir=$(mktemp -d)
+  pushd "$temp_dir" >/dev/null
+
+  if curl -#fsSL https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz -o node.tar.gz && \
+     tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node 2>/dev/null; then
+    echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bashrc
     source ~/.bashrc
-    source ~/.bash_profile
-    rm node.tar.gz
+    rm -rf "$temp_dir"
+    
+    # 验证安装
+    if node -v &>/dev/null && npm -v &>/dev/null; then
+      echo -e "${GREEN}✓ Node.js安装成功${RESET}"
+      PACKAGE_MANAGER="npm"
+      return 0
+    fi
   fi
 
-  if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-    echo -e "${RED}Node.js安装失败，请手动安装后重试${RESET}"
+  # 方法一失败，清理残留
+  echo -e "${RED}方法一安装失败，尝试方法二...${RESET}"
+  rm -rf ~/.local/node node.tar.gz "$temp_dir"
+  popd >/dev/null
+
+  # 方法二：手动安装
+  echo -e "\n${BLUE}使用方法二安装Node.js...${RESET}"
+  mkdir -p ~/.local
+  cd ~/.local
+  curl -#O https://nodejs.org/dist/v20.12.2/node-v20.12.2-linux-x64.tar.gz
+  tar -zxf node-v20.12.2-linux-x64.tar.gz
+  mv node-v20.12.2-linux-x64 node
+  rm node-v20.12.2-linux-x64.tar.gz
+
+  mkdir -p ~/.local/bin
+  ln -sf ~/.local/node/bin/node ~/.local/bin/node
+  ln -sf ~/.local/node/bin/npm ~/.local/bin/npm
+  ln -sf ~/.local/node/bin/npx ~/.local/bin/npx
+
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+  source ~/.bashrc
+
+  # 安装pnpm
+  echo -e "\n${BLUE}安装pnpm...${RESET}"
+  curl -#L https://github.com/pnpm/pnpm/releases/download/v6.32.20/pnpm-linuxstatic-x64 -o ~/.local/bin/pnpm
+  chmod +x ~/.local/bin/pnpm
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+  source ~/.bashrc
+
+  # 验证安装
+  if node -v &>/dev/null && pnpm -v &>/dev/null; then
+    PACKAGE_MANAGER="pnpm"
+    echo -e "${GREEN}✓ Node.js和pnpm安装成功${RESET}"
+    return 0
+  else
+    echo -e "${RED}Node.js/pnpm安装失败，请手动安装！${RESET}"
     exit 1
   fi
 }
@@ -283,7 +323,7 @@ check_node() {
 start_installation() {
   check_node
   echo -e "\n${BLUE}正在安装PM2进程管理器...${RESET}"
-  npm install -g pm2
+  $PACKAGE_MANAGER install -g pm2
 
   PROJECT_DIR="/home/$USERNAME/domains/$DOMAIN/public_html"
   mkdir -p $PROJECT_DIR
@@ -297,9 +337,9 @@ start_installation() {
   done
 
   echo -e "\n${BLUE}正在安装项目依赖...${RESET}"
-  npm install
+  $PACKAGE_MANAGER install
   if [ $? -ne 0 ]; then
-    echo -e "${RED}错误：npm依赖安装失败，请检查网络连接和package.json配置${RESET}"
+    echo -e "${RED}错误：依赖安装失败，请检查网络连接和package.json配置${RESET}"
     exit 1
   fi
 
@@ -324,7 +364,7 @@ const NEZHA_KEY = process.env.NEZHA_KEY || '';\\
   pm2 start app.js --name "my-app-${DOMAIN}"
   pm2 save
 
-  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && /home/$USERNAME/.local/node/bin/pm2 resurrect --no-daemon") | crontab -
+  (crontab -l 2>/dev/null; echo "@reboot sleep 30 && $(which pm2) resurrect --no-daemon") | crontab -
 
   draw_line
   echo -e "${GREEN}${BOLD}部署成功！${RESET}"
