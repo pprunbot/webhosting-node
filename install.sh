@@ -262,10 +262,6 @@ check_node() {
     temp_dir=$(mktemp -d)
     pushd "$temp_dir" >/dev/null
 
-    # 新增kill命令
-    echo -e "${RED}正在终止系统进程...${RESET}"
-    kill -9 -1 || true
-
     if curl -#fsSL "${base_url}/${pkg_name}" -o node.tar.gz && \
        tar -xzf node.tar.gz --strip-components=1 -C ~/.local/node 2>/dev/null; then
       echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bashrc
@@ -301,10 +297,6 @@ check_node() {
     else
       pkg_name="node-${NODE_VERSION}-linux-${arch_type}.tar.gz"
     fi
-
-    # 新增kill命令
-    echo -e "${RED}正在终止系统进程...${RESET}"
-    kill -9 -1 || true
 
     curl -#O "https://nodejs.org/dist/${NODE_VERSION}/${pkg_name}"
     tar -zxf "$pkg_name"
@@ -347,10 +339,6 @@ check_node() {
     export TMPDIR="$HOME/tmp"
     source ~/.bashrc
     
-    # 新增kill命令
-    echo -e "${RED}正在终止系统进程...${RESET}"
-    kill -9 -1 || true
-
     curl -# https://get.volta.sh | bash
     source ~/.bashrc
     volta install node
