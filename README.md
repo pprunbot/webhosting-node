@@ -37,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/insta
 bash install.sh
 ```
 
-重置系统脚本:
+重置系统脚本，需要重新添加域名:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/reset_system.sh -o reset_system.sh && chmod +x reset_system.sh && ./reset_system.sh
@@ -69,7 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/reset
 在"修改配置文件"选项中，您需要提供以下信息：
 
 - **域名**：脚本会自动扫描您的域名目录，您可以从列表中选择或手动输入
-- **节点名称**：显示在订阅信息中的节点名称（默认：webhosting）
+- **节点名称**：显示在订阅信息中的节点名称（默认：Webhosting-Node）
 - **监听端口**：WebSocket服务器监听的端口（默认：4000）
 - **UUID**：可以自动生成或手动输入，用于WebSocket连接验证
 - **反代域名**：用于VLESS连接的反代域名（默认：skk.moe）
