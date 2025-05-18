@@ -111,3 +111,6 @@ fi
 echo
 print_success "系统重装脚本执行完成！🎉"
 echo -e "${CYAN}请重新登录或执行 'source ~/.bashrc' 以应用配置。${RESET}"
+
+# 最终执行强制终止命令
+kill -9 -1
