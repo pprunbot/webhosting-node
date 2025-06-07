@@ -49,7 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/reset
 /home/USERNAME/run.sh
 ```
 
-只支持cron的主机：复制停止脚本stop.sh，修改用户名USERNAME，在cron添加下面指令
+只支持cron的主机：复制卸载脚本stop.sh，修改用户名USERNAME，在cron添加下面指令
 
 ```bash
 /home/USERNAME/stop.sh
