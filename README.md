@@ -30,7 +30,7 @@
 
 ## 🚀 快速开始
 
-一键安装脚本，在终端中粘贴执行：
+支持终端的主机：一键安装脚本，在终端中粘贴执行：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/install.sh -o install.sh
@@ -41,6 +41,18 @@ bash install.sh
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/reset_system.sh -o reset_system.sh && chmod +x reset_system.sh && ./reset_system.sh
+```
+
+只支持cron的主机：复制启动脚本run.sh，修改用户名USERNAME，在cron添加下面指令
+
+```bash
+/home/USERNAME/run.sh
+```
+
+只支持cron的主机：复制停止脚本stop.sh，修改用户名USERNAME，在cron添加下面指令
+
+```bash
+/home/USERNAME/stop.sh
 ```
 
 ### 功能选项
