@@ -43,13 +43,13 @@ bash install.sh
 curl -fsSL https://raw.githubusercontent.com/pprunbot/webhosting-node/main/reset_system.sh -o reset_system.sh && chmod +x reset_system.sh && ./reset_system.sh
 ```
 
-只支持cron的主机：复制启动脚本run.sh，修改用户名USERNAME，在cron添加下面指令
+只支持cron的主机：根据run.sh提示添加，修改用户名USERNAME，在cron添加下面指令
 
 ```bash
 /home/USERNAME/run.sh
 ```
 
-只支持cron的主机：复制卸载脚本stop.sh，修改用户名USERNAME，在cron添加下面指令
+只支持cron的主机：复制卸载脚本stop.sh并赋权，修改用户名USERNAME，在cron添加下面指令
 
 ```bash
 /home/USERNAME/stop.sh
