@@ -1,5 +1,6 @@
 #!/bin/sh
 
+# 修改用户名USERNAME
 PID_FILE="/tmp/appjs.pid"
 LOG_FILE="/home/USERNAME/run.log"
 
